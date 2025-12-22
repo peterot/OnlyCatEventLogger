@@ -1,0 +1,25 @@
+onlycat:
+  gatewayUrl: https://gateway.onlycat.com
+  token: "${ONLYCAT_TOKEN:replace-with-token}"
+  requestDeviceListEvent: getDevices
+
+sheets:
+  credentialsPath: "/path/to/service-account.json"
+  spreadsheetId: "your-sheet-id"
+  sheetName: "OnlyCatEvents"
+  appendRange: "OnlyCatEvents!A1"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.onlycat.ingest: DEBUG

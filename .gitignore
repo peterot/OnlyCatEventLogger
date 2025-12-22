@@ -1,0 +1,8 @@
+# Local config (copy from application.example.yml)
+src/main/resources/application.yml
+src/main/resources/application-local.yml
+
+# Build outputs
+build/
+*.class
+.gradle/
