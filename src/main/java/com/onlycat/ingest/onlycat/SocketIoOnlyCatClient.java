@@ -32,6 +32,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
     private final OnlyCatProperties properties;
     private final EventIngestService ingestService;
     private final AtomicInteger sampleLogged = new AtomicInteger();
+    private final AtomicInteger packetSamples = new AtomicInteger();
     private Socket socket;
 
     public SocketIoOnlyCatClient(OnlyCatProperties properties, EventIngestService ingestService) {
@@ -122,6 +123,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                     Object[] payload = new Object[Math.max(0, array.length() - 1)];
                     for (int i = 1; i < array.length(); i++) {
                         payload[i - 1] = array.opt(i);
+                    }
+                    if (packetSamples.getAndIncrement() < 10) {
+                        log.info("Packet intercept event={} payload={}", eventName, Arrays.toString(payload));
+                    } else {
+                        log.debug("Packet intercept event={} payload={}", eventName, Arrays.toString(payload));
                     }
                     handleAnyEvent(eventName, payload);
                 }
