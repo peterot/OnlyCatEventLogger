@@ -4,7 +4,10 @@ import com.onlycat.ingest.config.OnlyCatProperties;
 import com.onlycat.ingest.service.EventIngestService;
 import io.socket.client.IO;
 import io.socket.client.Socket;
+import io.socket.client.Manager;
 import io.socket.emitter.Emitter;
+import io.socket.parser.Packet;
+import org.json.JSONArray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -65,6 +68,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         socket.on("message", args -> handleAnyEvent("message", args));
 
         registerCatchAll(socket);
+        registerPacketInterceptor(socket);
 
         socket.connect();
         log.info("Connecting to {} (token redacted)", properties.getGatewayUrl());
@@ -104,6 +108,25 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                 socket.on(event, args -> handleAnyEvent(event, args));
             }
         }
+    }
+
+    private void registerPacketInterceptor(Socket socket) {
+        // Fallback: inspect low-level packets to capture all event names/payloads.
+        socket.io().on(Manager.EVENT_PACKET, args -> {
+            if (args == null || args.length == 0 || !(args[0] instanceof Packet packet)) {
+                return;
+            }
+            if (packet.type == io.socket.parser.Parser.EVENT || packet.type == io.socket.parser.Parser.BINARY_EVENT) {
+                if (packet.data instanceof JSONArray array && array.length() >= 1) {
+                    String eventName = array.optString(0, "unknown");
+                    Object[] payload = new Object[Math.max(0, array.length() - 1)];
+                    for (int i = 1; i < array.length(); i++) {
+                        payload[i - 1] = array.opt(i);
+                    }
+                    handleAnyEvent(eventName, payload);
+                }
+            }
+        });
     }
 
     private void handleAnyEvent(String event, Object[] args) {
