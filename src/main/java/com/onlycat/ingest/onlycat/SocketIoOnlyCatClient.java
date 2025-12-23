@@ -161,31 +161,15 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         if (!StringUtils.hasText(event)) {
             return;
         }
-        log.info("Emitting smoke-test event '{}' (ack will be logged)", event);
-        socket.emit(event, (Object) null, (Ack) args -> {
-            log.info("Ack for '{}': {}", event, Arrays.toString(args));
-            maybeDumpAckJson(event, args);
-        });
+        log.info("Emitting smoke-test event '{}'", event);
+        socket.emit(event);
         if (properties.getSubscribeEvents() != null) {
             for (String sub : properties.getSubscribeEvents()) {
                 if (StringUtils.hasText(sub)) {
-                    log.info("Emitting subscription event '{}' (ack will be logged)", sub);
-                    socket.emit(sub, (Ack) args -> {
-                        log.info("Ack for subscription '{}': {}", sub, Arrays.toString(args));
-                        maybeDumpAckJson(sub, args);
-                    });
+                    log.info("Emitting subscription event '{}'", sub);
+                    socket.emit(sub);
                 }
             }
-        }
-    }
-
-    private void maybeDumpAckJson(String event, Object[] args) {
-        try {
-            Object payload = (args != null && args.length == 1) ? args[0] : args;
-            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(payload);
-            log.info("Ack payload JSON for '{}': {}", event, json);
-        } catch (Exception e) {
-            log.debug("Ack payload for '{}' not JSON-serializable: {}", event, Arrays.toString(args));
         }
     }
 
