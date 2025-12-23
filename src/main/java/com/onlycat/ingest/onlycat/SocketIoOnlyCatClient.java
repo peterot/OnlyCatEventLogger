@@ -15,7 +15,6 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -33,6 +32,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
     private final OnlyCatProperties properties;
     private final EventIngestService ingestService;
     private final AtomicInteger sampleLogged = new AtomicInteger();
+    private final AtomicInteger infoLogged = new AtomicInteger();
     private final AtomicInteger packetSamples = new AtomicInteger();
     private Socket socket;
 
@@ -63,12 +63,29 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
             log.info("Connected to OnlyCat gateway");
             emitSmokeTest();
         });
-        socket.on(Socket.EVENT_CONNECT_ERROR, args -> log.warn("Connection error: {}", Arrays.toString(args)));
+        socket.on(Socket.EVENT_CONNECT_ERROR, args -> {
+            log.warn("Connection error args={}", Arrays.toString(args));
+            if (args != null && args.length > 0 && args[0] instanceof Throwable t) {
+                log.warn("Connection error throwable", t);
+                if (t.getCause() != null) {
+                    log.warn("Connection error cause", t.getCause());
+                }
+            }
+        });
         socket.on(Socket.EVENT_DISCONNECT, args -> log.warn("Disconnected: {}", Arrays.toString(args)));
         socket.on("reconnect", args -> log.info("Reconnected"));
         socket.on("reconnecting", args -> log.info("Reconnecting..."));
         socket.on("error", args -> log.error("Socket error: {}", Arrays.toString(args)));
         socket.on("message", args -> handleAnyEvent("message", args));
+
+        // Reconnect events are emitted by the Manager in socket.io-client-java
+        socket.io().on(Manager.EVENT_RECONNECT, a -> log.info("Manager reconnect: {}", Arrays.toString(a)));
+        socket.io().on(Manager.EVENT_RECONNECT_ATTEMPT, a -> log.info("Manager reconnect attempt: {}", Arrays.toString(a)));
+        socket.io().on(Manager.EVENT_RECONNECT_ERROR, a -> log.warn("Manager reconnect error: {}", Arrays.toString(a)));
+        socket.io().on(Manager.EVENT_RECONNECT_FAILED, a -> log.warn("Manager reconnect failed: {}", Arrays.toString(a)));
+
+        socket.io().on(Manager.EVENT_ERROR, a -> log.warn("Manager error: {}", Arrays.toString(a)));
+        socket.io().on(Manager.EVENT_TRANSPORT, a -> log.info("Manager transport: {}", Arrays.toString(a)));
 
         registerCatchAll(socket);
         registerPacketInterceptor(socket);
@@ -84,7 +101,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         opts.reconnectionDelay = 1000;
         opts.reconnectionDelayMax = 10_000;
         opts.timeout = 20_000;
-        opts.transports = new String[]{"websocket"};
+        // Prefer websocket first; some deployments reject/disable XHR polling.
+        opts.transports = new String[]{"websocket", "polling"};
+        opts.forceNew = true;
         Map<String, List<String>> headers = new HashMap<>();
         if (StringUtils.hasText(properties.getPlatform())) {
             headers.put("platform", List.of(properties.getPlatform()));
@@ -148,7 +167,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
     }
 
     private void handleAnyEvent(String event, Object[] args) {
-        if (sampleLogged.getAndIncrement() < 2) {
+        // Log a handful of inbound events at INFO so users don't need DEBUG to verify flow.
+        int n = infoLogged.getAndIncrement();
+        if (n < 20) {
+            log.info("Inbound event #{} {} payload={}", n + 1, event, Arrays.toString(args));
+        } else if (sampleLogged.getAndIncrement() < 2) {
             log.info("Sample inbound event {} payload={}", event, Arrays.toString(args));
         } else {
             log.debug("Inbound event {} payload={}", event, Arrays.toString(args));
@@ -157,20 +180,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
     }
 
     private void emitSmokeTest() {
-        String event = properties.getRequestDeviceListEvent();
-        if (!StringUtils.hasText(event)) {
-            return;
-        }
-        log.info("Emitting smoke-test event '{}'", event);
-        socket.emit(event);
-        if (properties.getSubscribeEvents() != null) {
-            for (String sub : properties.getSubscribeEvents()) {
-                if (StringUtils.hasText(sub)) {
-                    log.info("Emitting subscription event '{}'", sub);
-                    socket.emit(sub);
-                }
-            }
-        }
+        // Forced listen-only: do not emit any messages after connect.
+        log.info("Listen-only mode: skipping smoke-test and subscription emits");
     }
 
     @Override

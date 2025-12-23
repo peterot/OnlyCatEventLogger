@@ -39,9 +39,9 @@ cp src/main/resources/application.example.yml src/main/resources/application.yml
 onlycat:
   gatewayUrl: https://gateway.onlycat.com
   token: "${ONLYCAT_TOKEN:replace-with-token}"
-  requestDeviceListEvent: getDevices  # smoke-test emit on connect
+  requestDeviceListEvent: getDevices  # retained for future, but emits are disabled (listen-only)
   namespace: "/"  # set to "/catflap" or others if needed
-  subscribeEvents: []  # optional list of event names to emit after connect for subscription
+  subscribeEvents: []  # retained for future, but emits are disabled (listen-only)
   platform: "onlycat-java"  # sent as header
   device: "onlycat-event-logger"  # sent as header
 
@@ -66,7 +66,7 @@ Actuator health: `curl http://localhost:8080/actuator/health`
 - Connects to `gateway.onlycat.com` via Socket.IO with reconnection/backoff. Token is sent but never logged.  
 - Registers a catch-all handler when available; otherwise listens to common event names and `message`. Logs the first two payload samples at INFO.  
 - If the library does not expose a catch-all, a low-level packet interceptor captures every event name/payload and forwards it for normalization. The first 50 intercepted events log at INFO (`Packet intercept nsp=... type=... event=...`) to help verify event names; the rest log at DEBUG.  
-- Emits a smoke-test event (default `getDevices`) after connect for quick feedback.  
+- Forced listen-only: no outbound emits after connect. The smoke-test/subscription fields remain in config for potential future use but are inactive.  
 - Each inbound event is normalized into `OnlyCatEvent` and appended to Sheets in near-real-time. Value input option is `RAW` to avoid Sheets re-formatting the JSON.  
 - Dedupe: in-memory LRU (512 keys) keyed by hash(raw_json + event_time) to reduce duplicates after reconnects.  
 - `raw_json` is compacted JSON and truncated to 45k characters to stay under the Google Sheets cell limit; truncation is indicated with `...(truncated)`.  
