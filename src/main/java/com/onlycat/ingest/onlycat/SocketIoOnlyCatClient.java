@@ -124,10 +124,10 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                     for (int i = 1; i < array.length(); i++) {
                         payload[i - 1] = array.opt(i);
                     }
-                    if (packetSamples.getAndIncrement() < 10) {
-                        log.info("Packet intercept event={} payload={}", eventName, Arrays.toString(payload));
+                    if (packetSamples.getAndIncrement() < 50) {
+                        log.info("Packet intercept nsp={} type={} event={} payload={}", packet.nsp, packet.type, eventName, Arrays.toString(payload));
                     } else {
-                        log.debug("Packet intercept event={} payload={}", eventName, Arrays.toString(payload));
+                        log.debug("Packet intercept nsp={} type={} event={} payload={}", packet.nsp, packet.type, eventName, Arrays.toString(payload));
                     }
                     handleAnyEvent(eventName, payload);
                 }
