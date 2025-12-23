@@ -40,6 +40,10 @@ onlycat:
   gatewayUrl: https://gateway.onlycat.com
   token: "${ONLYCAT_TOKEN:replace-with-token}"
   requestDeviceListEvent: getDevices  # smoke-test emit on connect
+  namespace: "/"  # set to "/catflap" or others if needed
+  subscribeEvents: []  # optional list of event names to emit after connect for subscription
+  platform: "onlycat-java"  # sent as header
+  device: "onlycat-event-logger"  # sent as header
 
 sheets:
   credentialsPath: "/path/to/service-account.json"

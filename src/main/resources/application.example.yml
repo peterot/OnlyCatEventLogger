@@ -2,6 +2,10 @@ onlycat:
   gatewayUrl: https://gateway.onlycat.com
   token: "${ONLYCAT_TOKEN:replace-with-token}"
   requestDeviceListEvent: getDevices
+  namespace: "/"
+  subscribeEvents: []
+  platform: "onlycat-java"
+  device: "onlycat-event-logger"
 
 sheets:
   credentialsPath: "/path/to/service-account.json"

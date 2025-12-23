@@ -52,7 +52,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         }
         IO.Options options = buildOptions();
         try {
-            socket = IO.socket(properties.getGatewayUrl(), options);
+            String target = properties.getGatewayUrl() + properties.getNamespace();
+            socket = IO.socket(target, options);
         } catch (Exception e) {
             throw new IllegalStateException("Unable to create Socket.IO client", e);
         }
@@ -72,7 +73,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         registerPacketInterceptor(socket);
 
         socket.connect();
-        log.info("Connecting to {} (token redacted)", properties.getGatewayUrl());
+        log.info("Connecting to {}{} (token redacted)", properties.getGatewayUrl(), properties.getNamespace());
     }
 
     private IO.Options buildOptions() {
@@ -83,12 +84,22 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         opts.reconnectionDelayMax = 10_000;
         opts.timeout = 20_000;
         opts.transports = new String[]{"websocket"};
-        // Pass token without logging it.
-        if (StringUtils.hasText(properties.getToken())) {
-            opts.query = "token=" + URLEncoder.encode(properties.getToken(), StandardCharsets.UTF_8);
-            Map<String, List<String>> headers = new HashMap<>();
-            headers.put("Authorization", List.of("Bearer " + properties.getToken()));
+        Map<String, List<String>> headers = new HashMap<>();
+        if (StringUtils.hasText(properties.getPlatform())) {
+            headers.put("platform", List.of(properties.getPlatform()));
+        }
+        if (StringUtils.hasText(properties.getDevice())) {
+            headers.put("device", List.of(properties.getDevice()));
+        }
+        if (!headers.isEmpty()) {
             opts.extraHeaders = headers;
+        }
+        // Pass token via auth map (matches Python client) and query for compatibility.
+        if (StringUtils.hasText(properties.getToken())) {
+            Map<String, String> auth = new HashMap<>();
+            auth.put("token", properties.getToken());
+            opts.auth = auth;
+            opts.query = "token=" + URLEncoder.encode(properties.getToken(), StandardCharsets.UTF_8);
         }
         return opts;
     }
@@ -151,6 +162,14 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         }
         log.info("Emitting smoke-test event '{}'", event);
         socket.emit(event);
+        if (properties.getSubscribeEvents() != null) {
+            for (String sub : properties.getSubscribeEvents()) {
+                if (StringUtils.hasText(sub)) {
+                    log.info("Emitting subscription event '{}'", sub);
+                    socket.emit(sub);
+                }
+            }
+        }
     }
 
     @Override
