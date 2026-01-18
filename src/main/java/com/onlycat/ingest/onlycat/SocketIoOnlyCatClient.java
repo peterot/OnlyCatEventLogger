@@ -54,6 +54,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
     private final AtomicInteger packetSamples = new AtomicInteger();
 
     private final AtomicBoolean subscribedThisSession = new AtomicBoolean(false);
+    private final AtomicBoolean anyListenerAvailable = new AtomicBoolean(false);
 
     private Socket socket;
 
@@ -166,9 +167,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                     new Class[]{anyListenerClass},
                     new AnyInvocationHandler());
             onAny.invoke(socket, listenerProxy);
+            anyListenerAvailable.set(true);
             log.info("Registered catch-all Socket.IO handler");
         } catch (Exception ex) {
             // This is fine: many versions of the Java client do not ship AnyListener.
+            anyListenerAvailable.set(false);
             log.info("Catch-all not available ({}) - registering basic handlers", ex.getMessage());
             for (String event : List.of("connect", "authenticated", "userUpdate", "device_event", "cat_event", "events")) {
                 socket.on(event, args -> handleAnyEvent(event, args));
@@ -221,7 +224,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                     for (int i = 1; i < array.length(); i++) {
                         payload[i - 1] = array.opt(i);
                     }
-                    handleAnyEvent(eventName, payload);
+                    if (!anyListenerAvailable.get()) {
+                        handleAnyEvent(eventName, payload);
+                    } else {
+                        log.debug("Skipping EVENT packet dispatch because onAny is active: {}", eventName);
+                    }
                 } else {
                     log.info("EVENT packet without JSON array payload: dataClass={} data={}",
                             packet.data == null ? "null" : packet.data.getClass().getName(),
