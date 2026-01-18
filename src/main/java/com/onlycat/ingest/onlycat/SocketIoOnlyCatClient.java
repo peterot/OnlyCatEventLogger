@@ -776,7 +776,6 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
             this.original = original;
         }
     }
-}
 
     /**
      * Add friendly fields for eventClassification/eventTriggerSource.
@@ -885,3 +884,4 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
             default -> "Unknown (" + value + ")";
         };
     }
+}
