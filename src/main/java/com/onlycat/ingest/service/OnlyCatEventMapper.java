@@ -24,17 +24,20 @@ public class OnlyCatEventMapper {
         Instant ingestedAt = Instant.now();
         Object payload = firstPayload(args);
         Map<String, Object> payloadMap = asMap(payload);
+        Map<String, Object> bodyMap = asMap(payloadMap.get("body"));
+        Map<String, Object> lookupMap = new LinkedHashMap<>(payloadMap);
+        bodyMap.forEach(lookupMap::putIfAbsent);
 
-        Instant eventTime = extractInstant(payloadMap);
-        String direction = firstString(payloadMap, List.of("direction", "flow"));
-        String catName = findNestedString(payloadMap, List.of("catName", "cat_name"), List.of("cat", "name"));
-        String catId = findNestedString(payloadMap, List.of("catId", "cat_id"), List.of("cat", "id"));
-        String deviceName = findNestedString(payloadMap, List.of("deviceName", "device_name"), List.of("device", "name"));
-        String deviceId = findNestedString(payloadMap, List.of("deviceId", "device_id"), List.of("device", "id"));
-        String outcome = firstString(payloadMap, List.of("outcome", "result", "status", "access"));
-        Boolean preyDetected = firstBoolean(payloadMap, List.of("preyDetected", "prey_detected", "prey"));
+        Instant eventTime = extractInstant(lookupMap);
+        String direction = firstString(lookupMap, List.of("direction", "flow"));
+        String catName = findNestedString(lookupMap, List.of("catName", "cat_name"), List.of("cat", "name"));
+        String catId = findNestedString(lookupMap, List.of("catId", "cat_id"), List.of("cat", "id"));
+        String deviceName = findNestedString(lookupMap, List.of("deviceName", "device_name"), List.of("device", "name"));
+        String deviceId = findNestedString(lookupMap, List.of("deviceId", "device_id"), List.of("device", "id"));
+        String outcome = firstString(lookupMap, List.of("outcome", "result", "status", "access"));
+        Boolean preyDetected = firstBoolean(lookupMap, List.of("preyDetected", "prey_detected", "prey"));
 
-        String resolvedEventType = Optional.ofNullable(firstString(payloadMap, List.of("eventType", "type", "event")))
+        String resolvedEventType = Optional.ofNullable(firstString(lookupMap, List.of("eventType", "type", "event", "eventClassification", "eventTriggerSource")))
                 .orElse(eventName);
 
         String rawJson = sanitizeRawJson(args);

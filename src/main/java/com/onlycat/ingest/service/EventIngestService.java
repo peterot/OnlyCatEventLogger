@@ -26,7 +26,7 @@ public class EventIngestService {
 
     public void handleInbound(String eventName, Object[] args) {
         OnlyCatEvent event = mapper.map(eventName, args);
-        String key = hash(event.rawJson() + ":" + (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+        String key = hash(eventName + ":" + event.rawJson() + ":" + (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
         if (dedupeCache.seen(key)) {
             log.debug("Duplicate event suppressed for key {}", key);
             return;
