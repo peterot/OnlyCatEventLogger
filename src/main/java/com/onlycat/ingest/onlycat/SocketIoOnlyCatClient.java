@@ -60,6 +60,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
 
     private final AtomicBoolean subscribedThisSession = new AtomicBoolean(false);
     private final AtomicBoolean anyListenerAvailable = new AtomicBoolean(false);
+    private static final int MAX_RFID_RETRIES = 4;
+    private static final long[] RFID_RETRY_DELAYS_MS = {250, 500, 1000, 1500};
 
     // Enrichment: RFID -> cat label (name) cache and pending user events awaiting enrichment.
     private final Map<String, String> rfidLabelCache = new ConcurrentHashMap<>();
@@ -286,6 +288,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
                             ScheduledFuture<?> fallback = enrichmentScheduler.schedule(() -> {
                                 PendingUserEvent p = pendingUserEvents.remove(eventId);
                                 if (p != null && !p.ingested) {
+                                    if (p.retry != null) {
+                                        p.retry.cancel(false);
+                                    }
                                     log.info("Enrichment timeout for eventId={} deviceId={} - ingesting raw event", eventId, deviceId);
                                     JSONObject decorated = decorateUserEventUpdate(new JSONObject(p.original.toString()));
                                     ingestService.handleInbound(event, new Object[]{decorated});
@@ -601,6 +606,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
             String rfidCode = extractRfidForEventId(ackArgs, pending.eventId);
             if (!StringUtils.hasText(rfidCode)) {
                 log.info("Enrichment: no rfidCode found for eventId={} deviceId={}", pending.eventId, pending.deviceId);
+                scheduleRfidRetry(pending);
                 return;
             }
 
@@ -742,6 +748,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         if (removed.fallback != null) {
             removed.fallback.cancel(false);
         }
+        if (removed.retry != null) {
+            removed.retry.cancel(false);
+        }
         if (removed.ingested) {
             return;
         }
@@ -769,12 +778,34 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, ApplicationRunner, 
         final JSONObject original;
         volatile boolean ingested = false;
         volatile ScheduledFuture<?> fallback;
+        volatile ScheduledFuture<?> retry;
+        volatile int retryCount = 0;
 
         PendingUserEvent(int eventId, String deviceId, JSONObject original) {
             this.eventId = eventId;
             this.deviceId = deviceId;
             this.original = original;
         }
+    }
+
+    private void scheduleRfidRetry(PendingUserEvent pending) {
+        PendingUserEvent current = pendingUserEvents.get(pending.eventId);
+        if (current == null || current.ingested) {
+            return;
+        }
+        if (current.retryCount >= MAX_RFID_RETRIES) {
+            log.info("Enrichment: giving up on RFID lookup for eventId={} after {} retries",
+                    current.eventId, current.retryCount);
+            return;
+        }
+        long delayMs = RFID_RETRY_DELAYS_MS[Math.min(current.retryCount, RFID_RETRY_DELAYS_MS.length - 1)];
+        current.retryCount++;
+        if (current.retry != null) {
+            current.retry.cancel(false);
+        }
+        current.retry = enrichmentScheduler.schedule(() -> resolveCatForUserEvent(current), delayMs, TimeUnit.MILLISECONDS);
+        log.info("Enrichment: retry {} scheduled in {}ms for eventId={}",
+                current.retryCount, delayMs, current.eventId);
     }
 
     /**
