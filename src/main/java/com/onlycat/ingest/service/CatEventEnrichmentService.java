@@ -43,6 +43,10 @@ public class CatEventEnrichmentService {
     }
 
     private void handleAnyEvent(OnlyCatInboundEvent inbound) {
+        if (inbound.eventId() == null) {
+            log.debug("Skipping non-cat-flap event without eventId: {}", inbound.eventName());
+            return;
+        }
         String event = inbound.eventName();
         // Special-case: enrich userEventUpdate(create) with cat identity (RFID profile label).
         if ("userEventUpdate".equals(event)) {
