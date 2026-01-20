@@ -1,5 +1,7 @@
 package com.onlycat.ingest.onlycat;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onlycat.ingest.config.OnlyCatProperties;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import com.onlycat.ingest.model.OnlyCatRfidEvent;
@@ -54,6 +56,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
     private final OnlyCatProperties properties;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     private final AtomicInteger sampleLogged = new AtomicInteger();
     private final AtomicInteger infoLogged = new AtomicInteger();
@@ -64,9 +67,12 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
     private Socket socket;
 
-    public SocketIoOnlyCatClient(OnlyCatProperties properties, ApplicationEventPublisher eventPublisher) {
+    public SocketIoOnlyCatClient(OnlyCatProperties properties,
+                                 ApplicationEventPublisher eventPublisher,
+                                 ObjectMapper objectMapper) {
         this.properties = properties;
         this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -265,41 +271,26 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
     private OnlyCatInboundEvent parseInboundEvent(String event, Object[] args) {
         Object payload = firstPayload(args);
-        Integer eventId = null;
-        String eventType = null;
-        Integer eventTriggerSource = null;
-        Integer eventClassification = null;
-        String deviceId = null;
-        String timestamp = null;
-        Long globalId = null;
-        String accessToken = null;
+        OnlyCatUserEventUpdatePayload parsed = readPayload(payload);
+        OnlyCatUserEventBody body = parsed == null ? null : parsed.body();
 
-        JSONObject jo = null;
-        if (payload instanceof JSONObject jsonObject) {
-            jo = jsonObject;
-        } else if (payload instanceof Map<?, ?> map) {
-            jo = new JSONObject(map);
-        }
-        if (jo != null) {
-            eventId = readInt(jo, "eventId");
-            eventType = jo.optString("type", null);
-            eventTriggerSource = readInt(jo, "eventTriggerSource");
-            eventClassification = readInt(jo, "eventClassification");
-            deviceId = readString(jo, "deviceId");
-            timestamp = readString(jo, "timestamp");
-            globalId = readLong(jo, "globalId");
-            accessToken = readString(jo, "accessToken");
+        Integer eventId = parsed == null ? null : parsed.eventId();
+        String eventType = parsed == null ? null : parsed.type();
+        Integer eventTriggerSource = parsed == null ? null : parsed.eventTriggerSource();
+        Integer eventClassification = parsed == null ? null : parsed.eventClassification();
+        String deviceId = parsed == null ? null : parsed.deviceId();
+        String timestamp = parsed == null ? null : parsed.timestamp();
+        Long globalId = parsed == null ? null : parsed.globalId();
+        String accessToken = parsed == null ? null : parsed.accessToken();
 
-            JSONObject body = jo.optJSONObject("body");
-            if (body != null) {
-                if (eventId == null) eventId = readInt(body, "eventId");
-                if (eventTriggerSource == null) eventTriggerSource = readInt(body, "eventTriggerSource");
-                if (eventClassification == null) eventClassification = readInt(body, "eventClassification");
-                if (!StringUtils.hasText(deviceId)) deviceId = readString(body, "deviceId");
-                if (!StringUtils.hasText(timestamp)) timestamp = readString(body, "timestamp");
-                if (globalId == null) globalId = readLong(body, "globalId");
-                if (!StringUtils.hasText(accessToken)) accessToken = readString(body, "accessToken");
-            }
+        if (body != null) {
+            if (eventId == null) eventId = body.eventId();
+            if (eventTriggerSource == null) eventTriggerSource = body.eventTriggerSource();
+            if (eventClassification == null) eventClassification = body.eventClassification();
+            if (!StringUtils.hasText(deviceId)) deviceId = body.deviceId();
+            if (!StringUtils.hasText(timestamp)) timestamp = body.timestamp();
+            if (globalId == null) globalId = body.globalId();
+            if (!StringUtils.hasText(accessToken)) accessToken = body.accessToken();
         }
 
         return new OnlyCatInboundEvent(
@@ -316,6 +307,32 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         );
     }
 
+    private OnlyCatUserEventUpdatePayload readPayload(Object payload) {
+        if (payload == null) {
+            return null;
+        }
+        if (payload instanceof OnlyCatUserEventUpdatePayload typed) {
+            return typed;
+        }
+        if (payload instanceof JSONObject jo) {
+            return objectMapper.convertValue(jo.toMap(), OnlyCatUserEventUpdatePayload.class);
+        }
+        if (payload instanceof Map<?, ?> map) {
+            return objectMapper.convertValue(map, OnlyCatUserEventUpdatePayload.class);
+        }
+        if (payload instanceof String s) {
+            String t = s.trim();
+            if (t.startsWith("{")) {
+                try {
+                    return objectMapper.readValue(t, OnlyCatUserEventUpdatePayload.class);
+                } catch (Exception ignore) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
     private Object firstPayload(Object[] args) {
         if (args == null || args.length == 0) {
             return null;
@@ -328,41 +345,6 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         return null;
     }
 
-    private Integer readInt(JSONObject obj, String key) {
-        if (obj == null || key == null) return null;
-        Object v = obj.opt(key);
-        if (v == null) return null;
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            try {
-                return Integer.parseInt(s);
-            } catch (Exception ignore) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private Long readLong(JSONObject obj, String key) {
-        if (obj == null || key == null) return null;
-        Object v = obj.opt(key);
-        if (v == null) return null;
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) {
-            try {
-                return Long.parseLong(s);
-            } catch (Exception ignore) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private String readString(JSONObject obj, String key) {
-        if (obj == null || key == null) return null;
-        String value = obj.optString(key, null);
-        return StringUtils.hasText(value) ? value : null;
-    }
 
     /**
      * Read-only subscription chain used by other prototype clients:
@@ -497,58 +479,37 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return List.of();
         }
         java.util.ArrayList<OnlyCatRfidEvent> out = new java.util.ArrayList<>();
-        for (Object a : ackArgs) {
-            if (a instanceof JSONArray arr) {
-                for (int i = 0; i < arr.length(); i++) {
-                    addRfidEvent(arr.opt(i), out);
+        for (JsonNode node : ackArgsToNodes(ackArgs)) {
+            if (node.isArray()) {
+                for (JsonNode element : node) {
+                    addRfidEvent(element, out);
                 }
-            } else if (a instanceof JSONObject obj) {
+            } else if (node.isObject()) {
                 for (String key : List.of("items", "data", "events")) {
-                    Object v = obj.opt(key);
-                    if (v instanceof JSONArray arr) {
-                        for (int i = 0; i < arr.length(); i++) {
-                            addRfidEvent(arr.opt(i), out);
+                    JsonNode items = node.get(key);
+                    if (items != null && items.isArray()) {
+                        for (JsonNode element : items) {
+                            addRfidEvent(element, out);
                         }
                     }
                 }
-                addRfidEvent(obj, out);
-            } else if (a instanceof String s) {
-                String t = s.trim();
-                try {
-                    if (t.startsWith("[")) {
-                        JSONArray arr = new JSONArray(t);
-                        for (int i = 0; i < arr.length(); i++) {
-                            addRfidEvent(arr.opt(i), out);
-                        }
-                    } else if (t.startsWith("{")) {
-                        addRfidEvent(new JSONObject(t), out);
-                    }
-                } catch (Exception ignore) {
-                    // ignore
-                }
+                addRfidEvent(node, out);
             }
         }
         return out;
     }
 
-    private void addRfidEvent(Object obj, java.util.List<OnlyCatRfidEvent> out) {
-        if (!(obj instanceof JSONObject jo)) {
+    private void addRfidEvent(JsonNode node, java.util.List<OnlyCatRfidEvent> out) {
+        if (node == null || !node.isObject()) {
             return;
         }
-        Integer eventId = readInt(jo, "eventId");
-        String rfidCode = readString(jo, "rfidCode");
-        String deviceId = readString(jo, "deviceId");
-        String timestamp = readString(jo, "timestamp");
-        java.time.Instant instant = null;
-        if (StringUtils.hasText(timestamp)) {
-            try {
-                instant = java.time.Instant.parse(timestamp);
-            } catch (Exception ignore) {
-                // ignore
+        try {
+            OnlyCatRfidEvent event = objectMapper.treeToValue(node, OnlyCatRfidEvent.class);
+            if (event.eventId() != null || StringUtils.hasText(event.rfidCode()) || StringUtils.hasText(event.deviceId())) {
+                out.add(event);
             }
-        }
-        if (eventId != null || StringUtils.hasText(rfidCode) || StringUtils.hasText(deviceId)) {
-            out.add(new OnlyCatRfidEvent(eventId, rfidCode, deviceId, instant));
+        } catch (Exception ignore) {
+            // ignore
         }
     }
 
@@ -556,44 +517,70 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (ackArgs == null || ackArgs.length == 0) {
             return Optional.empty();
         }
-        for (Object a : ackArgs) {
-            JSONObject obj = null;
-            if (a instanceof JSONObject jo) {
-                obj = jo;
-            } else if (a instanceof String s) {
-                String t = s.trim();
-                if (t.startsWith("{")) {
-                    try {
-                        obj = new JSONObject(t);
-                    } catch (Exception ignore) {
-                        obj = null;
-                    }
-                }
+        for (JsonNode node : ackArgsToNodes(ackArgs)) {
+            if (!node.isObject()) {
+                continue;
             }
-            if (obj != null) {
-                JSONObject body = obj.optJSONObject("body");
-                JSONObject source = body != null ? body : obj;
-                String label = readString(source, "label");
-                Integer userId = readInt(source, "userId");
-                java.time.Instant createdAt = parseInstant(readString(source, "createdAt"));
-                java.time.Instant updatedAt = parseInstant(readString(source, "updatedAt"));
-                if (StringUtils.hasText(label) || userId != null) {
-                    return Optional.of(new OnlyCatRfidProfile(label, userId, createdAt, updatedAt));
+            OnlyCatRfidProfile profile = toRfidProfile(node);
+            if (profile != null && (StringUtils.hasText(profile.label()) || profile.userId() != null)) {
+                return Optional.of(profile);
+            }
+
+            JsonNode body = node.get("body");
+            if (body != null && body.isObject()) {
+                profile = toRfidProfile(body);
+                if (profile != null && (StringUtils.hasText(profile.label()) || profile.userId() != null)) {
+                    return Optional.of(profile);
                 }
             }
         }
         return Optional.empty();
     }
 
-    private java.time.Instant parseInstant(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
+    private OnlyCatRfidProfile toRfidProfile(JsonNode node) {
         try {
-            return java.time.Instant.parse(value);
+            return objectMapper.treeToValue(node, OnlyCatRfidProfile.class);
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    private List<JsonNode> ackArgsToNodes(Object[] ackArgs) {
+        java.util.ArrayList<JsonNode> nodes = new java.util.ArrayList<>();
+        for (Object arg : ackArgs) {
+            if (arg == null) {
+                continue;
+            }
+            if (arg instanceof JsonNode node) {
+                nodes.add(node);
+                continue;
+            }
+            if (arg instanceof JSONObject jo) {
+                nodes.add(objectMapper.valueToTree(jo.toMap()));
+                continue;
+            }
+            if (arg instanceof Map<?, ?> map) {
+                nodes.add(objectMapper.valueToTree(map));
+                continue;
+            }
+            if (arg instanceof String s) {
+                String t = s.trim();
+                if (t.startsWith("{") || t.startsWith("[")) {
+                    try {
+                        nodes.add(objectMapper.readTree(t));
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                }
+                continue;
+            }
+            try {
+                nodes.add(objectMapper.valueToTree(arg));
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
+        return nodes;
     }
 
     private void safeEmit(String event, Object payload, Ack ack) {
