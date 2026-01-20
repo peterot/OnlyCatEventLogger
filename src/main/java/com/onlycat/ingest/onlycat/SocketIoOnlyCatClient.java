@@ -274,15 +274,29 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     private OnlyCatInboundEvent parseInboundEvent(String event, Object[] args) {
         Object payload = firstPayload(args);
         OnlyCatUserEventUpdatePayload parsed = readPayload(payload);
+        if (parsed == null) {
+            return new OnlyCatInboundEvent(
+                    event,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    args
+            );
+        }
 
-        Integer eventId = parsed == null ? null : parsed.effectiveEventId();
-        String eventType = parsed == null ? null : parsed.type();
-        Integer eventTriggerSourceCode = parsed == null ? null : parsed.effectiveEventTriggerSource();
-        Integer eventClassificationCode = parsed == null ? null : parsed.effectiveEventClassification();
-        String deviceId = parsed == null ? null : parsed.effectiveDeviceId();
-        String timestamp = parsed == null ? null : parsed.effectiveTimestamp();
-        Long globalId = parsed == null ? null : parsed.effectiveGlobalId();
-        String accessToken = parsed == null ? null : parsed.effectiveAccessToken();
+        Integer eventId = parsed.effectiveEventId();
+        String eventType = parsed.type();
+        Integer eventTriggerSourceCode = parsed.effectiveEventTriggerSource();
+        Integer eventClassificationCode = parsed.effectiveEventClassification();
+        String deviceId = parsed.effectiveDeviceId();
+        String timestamp = parsed.effectiveTimestamp();
+        Long globalId = parsed.effectiveGlobalId();
+        String accessToken = parsed.effectiveAccessToken();
 
         OnlyCatEventTriggerSource eventTriggerSource = OnlyCatEventTriggerSource.fromCode(eventTriggerSourceCode);
         OnlyCatEventClassification eventClassification = OnlyCatEventClassification.fromCode(eventClassificationCode);
@@ -459,40 +473,36 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (ackArgs == null || ackArgs.length == 0 || ackArgs[0] == null) {
             return List.of();
         }
-        Object value = ackArgs[0];
-        return parseRfidEventArray(value);
-    }
-
-    private List<OnlyCatRfidEvent> parseRfidEventArray(Object value) {
-        if (value instanceof JSONArray arr) {
-            return parseRfidEventArray(arr.toString());
+        List<?> list = toRfidEventList(ackArgs[0]);
+        if (list == null || list.isEmpty()) {
+            return List.of();
         }
-
         try {
-            List<OnlyCatRfidEvent> events = objectMapper.convertValue(
-                    value,
-                    new TypeReference<List<OnlyCatRfidEvent>>() {}
-            );
-            if (events != null && !events.isEmpty()) {
-                return events;
-            }
-        } catch (IllegalArgumentException ignore) {
-            // ignore
-        }
-
-        try {
-            List<List<OnlyCatRfidEvent>> nested = objectMapper.convertValue(
-                    value,
-                    new TypeReference<List<List<OnlyCatRfidEvent>>>() {}
-            );
-            if (nested == null || nested.isEmpty()) {
-                return List.of();
-            }
-            List<OnlyCatRfidEvent> first = nested.get(0);
-            return first == null ? List.of() : first;
+            return objectMapper.convertValue(list, new TypeReference<List<OnlyCatRfidEvent>>() {});
         } catch (IllegalArgumentException ignore) {
             return List.of();
         }
+    }
+
+    private List<?> toRfidEventList(Object value) {
+        if (value instanceof JSONArray arr) {
+            return normalizeRfidEventList(arr.toList());
+        }
+        if (value instanceof List<?> list) {
+            return normalizeRfidEventList(list);
+        }
+        return null;
+    }
+
+    private List<?> normalizeRfidEventList(List<?> list) {
+        if (list == null || list.isEmpty()) {
+            return list;
+        }
+        Object first = list.get(0);
+        if (first instanceof List<?> nested) {
+            return nested;
+        }
+        return list;
     }
 
     private Optional<OnlyCatRfidProfile> parseRfidProfileFromAck(Object[] ackArgs) {
@@ -506,6 +516,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     private Optional<OnlyCatRfidProfile> toRfidProfile(Object value) {
         if (value == null) {
             return Optional.empty();
+        }
+        if (value instanceof JSONObject obj) {
+            return toRfidProfile(obj.toMap());
         }
         if (value instanceof Map<?, ?> map) {
             OnlyCatRfidProfile profile = convertValue(map, OnlyCatRfidProfile.class);
@@ -554,8 +567,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     /**
-     * Attempt to extract deviceIds from a variety of shapes seen in other clients.
-     * We keep this permissive and non-throwing; raw ACK JSON is still recorded.
+     * Extract device IDs from the first ACK payload (array of device objects or a device object).
      */
     private Set<String> extractDeviceIdsFromAck(Object[] ackArgs) {
         Set<String> out = new HashSet<>();
