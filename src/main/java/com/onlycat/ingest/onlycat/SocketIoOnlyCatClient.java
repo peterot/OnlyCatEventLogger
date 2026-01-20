@@ -1,6 +1,6 @@
 package com.onlycat.ingest.onlycat;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onlycat.ingest.config.OnlyCatProperties;
 import com.onlycat.ingest.model.OnlyCatEventClassification;
@@ -480,112 +480,77 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     private List<OnlyCatRfidEvent> parseRfidEventsFromAck(Object[] ackArgs) {
-        if (ackArgs == null || ackArgs.length == 0) {
+        if (ackArgs == null || ackArgs.length == 0 || ackArgs[0] == null) {
             return List.of();
         }
-        java.util.ArrayList<OnlyCatRfidEvent> out = new java.util.ArrayList<>();
-        for (JsonNode node : ackArgsToNodes(ackArgs)) {
-            if (node.isArray()) {
-                for (JsonNode element : node) {
-                    addRfidEvent(element, out);
-                }
-            } else if (node.isObject()) {
-                for (String key : List.of("items", "data", "events")) {
-                    JsonNode items = node.get(key);
-                    if (items != null && items.isArray()) {
-                        for (JsonNode element : items) {
-                            addRfidEvent(element, out);
-                        }
-                    }
-                }
-                addRfidEvent(node, out);
-            }
-        }
-        return out;
+        Object value = ackArgs[0];
+        return parseRfidEventArray(value);
     }
 
-    private void addRfidEvent(JsonNode node, java.util.List<OnlyCatRfidEvent> out) {
-        if (node == null || !node.isObject()) {
-            return;
+    private List<OnlyCatRfidEvent> parseRfidEventArray(Object value) {
+        if (value instanceof JSONArray arr) {
+            return parseRfidEventArray(arr.toString());
         }
+
         try {
-            OnlyCatRfidEvent event = objectMapper.treeToValue(node, OnlyCatRfidEvent.class);
-            if (event.eventId() != null || StringUtils.hasText(event.rfidCode()) || StringUtils.hasText(event.deviceId())) {
-                out.add(event);
+            List<OnlyCatRfidEvent> events = objectMapper.convertValue(
+                    value,
+                    new TypeReference<List<OnlyCatRfidEvent>>() {}
+            );
+            if (events != null && !events.isEmpty()) {
+                return events;
             }
-        } catch (Exception ignore) {
+        } catch (IllegalArgumentException ignore) {
             // ignore
+        }
+
+        try {
+            List<List<OnlyCatRfidEvent>> nested = objectMapper.convertValue(
+                    value,
+                    new TypeReference<List<List<OnlyCatRfidEvent>>>() {}
+            );
+            if (nested == null || nested.isEmpty()) {
+                return List.of();
+            }
+            List<OnlyCatRfidEvent> first = nested.get(0);
+            return first == null ? List.of() : first;
+        } catch (IllegalArgumentException ignore) {
+            return List.of();
         }
     }
 
     private Optional<OnlyCatRfidProfile> parseRfidProfileFromAck(Object[] ackArgs) {
-        if (ackArgs == null || ackArgs.length == 0) {
+        if (ackArgs == null || ackArgs.length == 0 || ackArgs[0] == null) {
             return Optional.empty();
         }
-        for (JsonNode node : ackArgsToNodes(ackArgs)) {
-            if (!node.isObject()) {
-                continue;
-            }
-            OnlyCatRfidProfile profile = toRfidProfile(node);
-            if (profile != null && (StringUtils.hasText(profile.label()) || profile.userId() != null)) {
-                return Optional.of(profile);
-            }
+        Object value = ackArgs[0];
+        return toRfidProfile(value);
+    }
 
-            JsonNode body = node.get("body");
-            if (body != null && body.isObject()) {
-                profile = toRfidProfile(body);
-                if (profile != null && (StringUtils.hasText(profile.label()) || profile.userId() != null)) {
-                    return Optional.of(profile);
-                }
-            }
+    private Optional<OnlyCatRfidProfile> toRfidProfile(Object value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            OnlyCatRfidProfile profile = convertValue(map, OnlyCatRfidProfile.class);
+            return hasProfileData(profile) ? Optional.of(profile) : Optional.empty();
+        }
+        if (value instanceof List<?> list && list.size() == 1) {
+            return toRfidProfile(list.get(0));
         }
         return Optional.empty();
     }
 
-    private OnlyCatRfidProfile toRfidProfile(JsonNode node) {
-        try {
-            return objectMapper.treeToValue(node, OnlyCatRfidProfile.class);
-        } catch (Exception ignore) {
-            return null;
-        }
+    private boolean hasProfileData(OnlyCatRfidProfile profile) {
+        return profile != null && (StringUtils.hasText(profile.label()) || profile.userId() != null);
     }
 
-    private List<JsonNode> ackArgsToNodes(Object[] ackArgs) {
-        java.util.ArrayList<JsonNode> nodes = new java.util.ArrayList<>();
-        for (Object arg : ackArgs) {
-            if (arg == null) {
-                continue;
-            }
-            if (arg instanceof JsonNode node) {
-                nodes.add(node);
-                continue;
-            }
-            if (arg instanceof JSONObject jo) {
-                nodes.add(objectMapper.valueToTree(jo.toMap()));
-                continue;
-            }
-            if (arg instanceof Map<?, ?> map) {
-                nodes.add(objectMapper.valueToTree(map));
-                continue;
-            }
-            if (arg instanceof String s) {
-                String t = s.trim();
-                if (t.startsWith("{") || t.startsWith("[")) {
-                    try {
-                        nodes.add(objectMapper.readTree(t));
-                    } catch (Exception ignore) {
-                        // ignore
-                    }
-                }
-                continue;
-            }
-            try {
-                nodes.add(objectMapper.valueToTree(arg));
-            } catch (Exception ignore) {
-                // ignore
-            }
+    private <T> T convertValue(Object value, Class<T> targetType) {
+        try {
+            return objectMapper.convertValue(value, targetType);
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
-        return nodes;
     }
 
     private void safeEmit(String event, Object payload, Ack ack) {
@@ -621,45 +586,20 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (ackArgs == null || ackArgs.length == 0) {
             return out;
         }
-
-        for (Object a : ackArgs) {
-            if (a == null) continue;
-
-            // Common shape: first arg is an array of device objects.
-            if (a instanceof JSONArray arr) {
+        Object first = ackArgs[0];
+        if (first instanceof JSONArray arr) {
+            for (int i = 0; i < arr.length(); i++) {
+                extractDeviceIdFromObject(arr.opt(i), out);
+            }
+            return out;
+        }
+        if (first instanceof JSONObject obj) {
+            if (obj.has("devices") && obj.opt("devices") instanceof JSONArray arr) {
                 for (int i = 0; i < arr.length(); i++) {
-                    Object el = arr.opt(i);
-                    extractDeviceIdFromObject(el, out);
+                    extractDeviceIdFromObject(arr.opt(i), out);
                 }
-                continue;
-            }
-
-            // Another common shape: first arg is an object { devices: [...] }
-            if (a instanceof JSONObject obj) {
-                if (obj.has("devices") && obj.opt("devices") instanceof JSONArray arr) {
-                    for (int i = 0; i < arr.length(); i++) {
-                        extractDeviceIdFromObject(arr.opt(i), out);
-                    }
-                } else {
-                    extractDeviceIdFromObject(obj, out);
-                }
-                continue;
-            }
-
-            // Sometimes it arrives as a String containing JSON.
-            if (a instanceof String s) {
-                try {
-                    if (s.trim().startsWith("{")) {
-                        extractDeviceIdFromObject(new JSONObject(s), out);
-                    } else if (s.trim().startsWith("[")) {
-                        JSONArray arr = new JSONArray(s);
-                        for (int i = 0; i < arr.length(); i++) {
-                            extractDeviceIdFromObject(arr.opt(i), out);
-                        }
-                    }
-                } catch (Exception ignore) {
-                    // ignore parsing failures; raw JSON is still captured elsewhere
-                }
+            } else {
+                extractDeviceIdFromObject(obj, out);
             }
         }
 
