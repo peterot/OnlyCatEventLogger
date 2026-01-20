@@ -35,6 +35,11 @@ public class OnlyCatProperties {
     private java.util.List<String> subscribeEvents = java.util.List.of();
 
     /**
+     * Whether to send auth payload in the Socket.IO CONNECT packet.
+     */
+    private boolean sendAuthPayload = true;
+
+    /**
      * Client platform header (mirrors Home Assistant client).
      */
     private String platform = "onlycat-java";
@@ -43,6 +48,11 @@ public class OnlyCatProperties {
      * Client device header (mirrors Home Assistant client).
      */
     private String device = "onlycat-event-logger";
+
+    /**
+     * Whether the Socket.IO client should attempt reconnection.
+     */
+    private boolean reconnectEnabled = true;
 
     public String getGatewayUrl() {
         return gatewayUrl;
@@ -84,6 +94,14 @@ public class OnlyCatProperties {
         this.subscribeEvents = subscribeEvents;
     }
 
+    public boolean isSendAuthPayload() {
+        return sendAuthPayload;
+    }
+
+    public void setSendAuthPayload(boolean sendAuthPayload) {
+        this.sendAuthPayload = sendAuthPayload;
+    }
+
     public String getPlatform() {
         return platform;
     }
@@ -98,5 +116,13 @@ public class OnlyCatProperties {
 
     public void setDevice(String device) {
         this.device = device;
+    }
+
+    public boolean isReconnectEnabled() {
+        return reconnectEnabled;
+    }
+
+    public void setReconnectEnabled(boolean reconnectEnabled) {
+        this.reconnectEnabled = reconnectEnabled;
     }
 }

@@ -4,11 +4,14 @@ import com.onlycat.ingest.model.OnlyCatEvent;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class CatEventEnrichmentService {
@@ -18,6 +21,7 @@ public class CatEventEnrichmentService {
     private final DedupeCache dedupeCache;
     private final RfidLabelCache rfidLabelCache;
     private final LastSeenRfidEventsCache lastSeenRfidEventsCache;
+    private final ExecutorService enrichmentExecutor;
 
     public CatEventEnrichmentService(CatEventRepository eventRepository,
                                      RfidLabelCache rfidLabelCache,
@@ -26,6 +30,11 @@ public class CatEventEnrichmentService {
         this.dedupeCache = new DedupeCache(512);
         this.rfidLabelCache = rfidLabelCache;
         this.lastSeenRfidEventsCache = lastSeenRfidEventsCache;
+        this.enrichmentExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "onlycat-enrichment");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @EventListener
@@ -43,9 +52,16 @@ public class CatEventEnrichmentService {
             try {
                 // Only enrich create events with a known deviceId/eventId.
                 if (eventId != null && StringUtils.hasText(deviceId) && "create".equalsIgnoreCase(type)) {
-                    Optional<String> rfidCode = lastSeenRfidEventsCache.resolveRfidCode(deviceId, eventId);
-                    Optional<String> label = rfidCode.flatMap(rfidLabelCache::getLabel);
-                    ingest(inbound, rfidCode.orElse(null), label.orElse(null));
+                    enrichmentExecutor.execute(() -> {
+                        try {
+                            Optional<String> rfidCode = lastSeenRfidEventsCache.resolveRfidCode(deviceId, eventId);
+                            Optional<String> label = rfidCode.flatMap(rfidLabelCache::getLabel);
+                            ingest(inbound, rfidCode.orElse(null), label.orElse(null));
+                        } catch (Exception ex) {
+                            log.debug("UserEvent enrichment failed; ingesting raw event", ex);
+                            ingest(inbound, null, null);
+                        }
+                    });
                     return;
                 }
             } catch (Exception e) {
@@ -119,5 +135,10 @@ public class CatEventEnrichmentService {
             sb.append(" catLabel=").append(catLabel);
         }
         return sb.toString();
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        enrichmentExecutor.shutdownNow();
     }
 }

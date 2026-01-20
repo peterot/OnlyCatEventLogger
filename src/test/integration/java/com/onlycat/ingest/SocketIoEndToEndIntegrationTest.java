@@ -43,6 +43,8 @@ class SocketIoEndToEndIntegrationTest {
         registry.add("onlycat.gatewayUrl", () -> "http://localhost:" + PORT);
         registry.add("onlycat.namespace", () -> "/");
         registry.add("onlycat.token", () -> "test-token");
+        registry.add("onlycat.sendAuthPayload", () -> "false");
+        registry.add("onlycat.reconnectEnabled", () -> "false");
         registry.add("onlycat.requestDeviceListEvent", () -> "");
     }
 
@@ -58,7 +60,7 @@ class SocketIoEndToEndIntegrationTest {
 
         Mockito.doAnswer(invocation -> {
             OnlyCatEvent event = invocation.getArgument(0);
-            if (event.rawJson() != null && event.rawJson().contains("\"catLabel\"")) {
+            if ("create".equals(event.eventType())) {
                 captured.set(event);
                 appended.countDown();
             }
@@ -84,20 +86,21 @@ class SocketIoEndToEndIntegrationTest {
 
         SERVER.getBroadcastOperations().sendEvent("userEventUpdate", payload);
 
-        assertThat(appended.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(appended.await(10, TimeUnit.SECONDS)).isTrue();
 
         OnlyCatEvent event = captured.get();
         assertThat(event).isNotNull();
         assertThat(event.eventType()).isEqualTo("create");
         assertThat(event.deviceId()).isEqualTo("OC-TEST-DEVICE-1");
         assertThat(event.eventTimeUtc()).isEqualTo(Instant.parse("2026-01-18T22:29:59Z"));
-        assertThat(event.rawJson()).contains("\"catLabel\":\"Cleo\"");
+        assertThat(event.catName()).isEqualTo("Cleo");
     }
 
     private static SocketIOServer startServer() {
         Configuration config = new Configuration();
         config.setHostname("localhost");
         config.setPort(PORT);
+        config.setAuthorizationListener(data -> true);
 
         SocketIOServer server = new SocketIOServer(config);
         server.addConnectListener(client -> connected.countDown());

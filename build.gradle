@@ -27,6 +27,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-json'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'io.socket:socket.io-client:2.1.0'
     implementation 'org.json:json:20240303'
@@ -40,7 +41,7 @@ dependencies {
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'com.corundumstudio.socketio:netty-socketio:2.0.10'
+    testImplementation 'com.corundumstudio.socketio:netty-socketio:2.0.0'
 }
 
 tasks.withType(Test).configureEach {

@@ -1,6 +1,5 @@
-package com.onlycat.ingest;
+package com.onlycat.ingest.service;
 
-import com.onlycat.ingest.service.DedupeCache;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,8 +22,8 @@ class DedupeCacheTest {
         cache.seen("second");
         cache.seen("third"); // should evict "first"
 
-        assertThat(cache.seen("first")).isFalse();
         assertThat(cache.seen("second")).isTrue();
         assertThat(cache.seen("third")).isTrue();
+        assertThat(cache.seen("first")).isFalse();
     }
 }

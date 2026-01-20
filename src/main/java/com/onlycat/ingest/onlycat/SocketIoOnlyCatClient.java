@@ -139,8 +139,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
     private IO.Options buildOptions() {
         IO.Options opts = new IO.Options();
-        opts.reconnection = true;
-        opts.reconnectionAttempts = Integer.MAX_VALUE;
+        opts.reconnection = properties.isReconnectEnabled();
+        opts.reconnectionAttempts = properties.isReconnectEnabled() ? Integer.MAX_VALUE : 0;
         opts.reconnectionDelay = 1000;
         opts.reconnectionDelayMax = 10_000;
         opts.timeout = 20_000;
@@ -164,7 +164,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (StringUtils.hasText(properties.getToken())) {
             Map<String, String> auth = new HashMap<>();
             auth.put("token", properties.getToken());
-            opts.auth = auth;
+            if (properties.isSendAuthPayload()) {
+                opts.auth = auth;
+            }
             // Some deployments also accept token in query.
             opts.query = "token=" + URLEncoder.encode(properties.getToken(), StandardCharsets.UTF_8);
         }
@@ -487,6 +489,12 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     private List<?> toRfidEventList(Object value) {
         if (value instanceof JSONArray arr) {
             return normalizeRfidEventList(arr.toList());
+        }
+        if (value instanceof JSONObject obj) {
+            return List.of(obj.toMap());
+        }
+        if (value instanceof Map<?, ?> map) {
+            return List.of(map);
         }
         if (value instanceof List<?> list) {
             return normalizeRfidEventList(list);
