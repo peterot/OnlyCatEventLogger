@@ -10,9 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class LastSeenRfidEventsCache {
@@ -31,14 +33,14 @@ public class LastSeenRfidEventsCache {
                 .build();
     }
 
-    public Optional<String> resolveRfidCode(String deviceId, int eventId) {
+    public List<String> resolveRfidCodes(String deviceId, int eventId) {
         if (!StringUtils.hasText(deviceId)) {
-            return Optional.empty();
+            return List.of();
         }
         for (int attempt = 0; attempt <= MAX_RFID_RETRIES; attempt++) {
-            Optional<String> rfidCode = lookupRfidCode(deviceId, eventId, attempt == 0);
-            if (rfidCode.isPresent()) {
-                return rfidCode;
+            List<String> rfidCodes = lookupRfidCodes(deviceId, eventId, attempt == 0);
+            if (!rfidCodes.isEmpty()) {
+                return rfidCodes;
             }
             if (attempt < MAX_RFID_RETRIES) {
                 long delayMs = RFID_RETRY_DELAYS_MS[Math.min(attempt, RFID_RETRY_DELAYS_MS.length - 1)];
@@ -47,26 +49,30 @@ public class LastSeenRfidEventsCache {
             }
         }
         log.info("Enrichment: no rfidCode found for eventId={} deviceId={}", eventId, deviceId);
-        return Optional.empty();
+        return List.of();
     }
 
-    private Optional<String> lookupRfidCode(String deviceId, int eventId, boolean allowCache) {
+    private List<String> lookupRfidCodes(String deviceId, int eventId, boolean allowCache) {
         List<OnlyCatRfidEvent> events = allowCache ? cache.getIfPresent(deviceId) : null;
         if (events == null || events.isEmpty()) {
             events = fetchEvents(deviceId);
         }
         if (events == null || events.isEmpty()) {
-            return Optional.empty();
+            return List.of();
         }
+        Set<String> matches = new LinkedHashSet<>();
         for (OnlyCatRfidEvent event : events) {
             if (event == null || event.eventId() == null) {
                 continue;
             }
             if (event.eventId() == eventId && StringUtils.hasText(event.rfidCode())) {
-                return Optional.of(event.rfidCode());
+                matches.add(event.rfidCode());
             }
         }
-        return Optional.empty();
+        if (matches.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(matches);
     }
 
     private List<OnlyCatRfidEvent> fetchEvents(String deviceId) {

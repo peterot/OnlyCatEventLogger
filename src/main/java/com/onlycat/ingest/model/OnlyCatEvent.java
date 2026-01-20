@@ -16,12 +16,12 @@ public record OnlyCatEvent(
         Long globalId,
         String deviceId,
         String rfidCode,
-        String catLabel
+        List<String> catLabels
 ) {
 
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_INSTANT;
 
-    public List<Object> toRow() {
+    public List<Object> toRow(String mappedCatLabel) {
         return List.of(
                 ingestedAtUtc != null ? ISO.format(ingestedAtUtc) : "",
                 eventTimeUtc != null ? ISO.format(eventTimeUtc) : "",
@@ -33,7 +33,7 @@ public record OnlyCatEvent(
                 globalId == null ? "" : String.valueOf(globalId),
                 nullToEmpty(deviceId),
                 nullToEmpty(rfidCode),
-                nullToEmpty(catLabel)
+                nullToEmpty(mappedCatLabel)
         );
     }
 

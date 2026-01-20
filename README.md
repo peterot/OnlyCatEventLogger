@@ -50,8 +50,19 @@ sheets:
   spreadsheetId: "your-sheet-id"
   sheetName: "OnlyCatEvents"
   appendRange: "OnlyCatEvents!A1"
+
+spring:
+  config:
+    import: "classpath:cat-label-mapping.yml"
 ```
 Recommended: export `ONLYCAT_TOKEN` rather than storing it in the file.
+Use `src/main/resources/cat-label-mapping.yml` to collapse multiple labels into one canonical label right before writing to Sheets:
+```yaml
+cat-label-mapping:
+  aliases:
+    "Cleo": "Cleo"
+    "Cleo 2": "Cleo"
+```
 
 ## Run
 ```bash
@@ -73,15 +84,15 @@ Actuator health: `curl http://localhost:8080/actuator/health`
 - Header columns (auto-created if the sheet is empty):
   1. ingested_at_utc  
   2. event_time_utc  
-  3. event_type  
-  4. direction  
-  5. cat_name  
-  6. cat_id  
-  7. device_name  
-  8. device_id  
-  9. outcome  
-  10. prey_detected  
-  11. raw_json  
+  3. event_name  
+  4. event_type  
+  5. event_id  
+  6. event_trigger_source  
+  7. event_classification  
+  8. global_id  
+  9. device_id  
+  10. rfid_code  
+  11. cat_label  
 
 ## Secrets
 - `onlycat.token` is sensitive; prefer env vars.  

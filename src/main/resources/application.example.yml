@@ -27,3 +27,7 @@ logging:
   level:
     root: INFO
     com.onlycat.ingest: DEBUG
+
+spring:
+  config:
+    import: "classpath:cat-label-mapping.yml"

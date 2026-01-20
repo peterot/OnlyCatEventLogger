@@ -4,12 +4,9 @@ import com.onlycat.ingest.model.OnlyCatEvent;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -58,12 +55,12 @@ public class CatEventEnrichmentService {
                 if (eventId != null && StringUtils.hasText(deviceId) && "create".equalsIgnoreCase(type)) {
                     enrichmentExecutor.execute(() -> {
                         try {
-                            Optional<String> rfidCode = lastSeenRfidEventsCache.resolveRfidCode(deviceId, eventId);
-                            Optional<String> label = rfidCode.flatMap(rfidLabelCache::getLabel);
-                            ingest(inbound, rfidCode.orElse(null), label.orElse(null));
+                            java.util.List<String> rfidCodes = lastSeenRfidEventsCache.resolveRfidCodes(deviceId, eventId);
+                            java.util.List<String> labels = resolveLabels(rfidCodes);
+                            ingest(inbound, firstNonBlank(rfidCodes), labels);
                         } catch (Exception ex) {
                             log.debug("UserEvent enrichment failed; ingesting raw event", ex);
-                            ingest(inbound, null, null);
+                            ingest(inbound, null, java.util.List.of());
                         }
                     });
                     return;
@@ -73,10 +70,10 @@ public class CatEventEnrichmentService {
             }
         }
 
-        ingest(inbound, null, null);
+        ingest(inbound, null, java.util.List.of());
     }
 
-    private void ingest(OnlyCatInboundEvent inbound, String rfidCode, String catLabel) {
+    private void ingest(OnlyCatInboundEvent inbound, String rfidCode, java.util.List<String> catLabels) {
         String triggerSource = inbound.eventTriggerSource() == null ? null : inbound.eventTriggerSource().prettyLabel();
         String classification = inbound.eventClassification() == null ? null : inbound.eventClassification().prettyLabel();
         OnlyCatEvent event = new OnlyCatEvent(
@@ -90,7 +87,7 @@ public class CatEventEnrichmentService {
                 inbound.globalId(),
                 inbound.deviceId(),
                 rfidCode,
-                catLabel
+                catLabels
         );
         String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
                 (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
@@ -99,7 +96,37 @@ public class CatEventEnrichmentService {
             return;
         }
         eventRepository.append(event);
-        log.info("Appended event type={} cat={} device={} time={}", event.eventType(), event.catLabel(), event.deviceId(), event.eventTimeUtc());
+        log.info("Appended event type={} cats={} device={} time={}", event.eventType(), catLabelsSummary(event.catLabels()), event.deviceId(), event.eventTimeUtc());
+    }
+
+    private java.util.List<String> resolveLabels(java.util.List<String> rfidCodes) {
+        if (rfidCodes == null || rfidCodes.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (String rfidCode : rfidCodes) {
+            rfidLabelCache.getLabel(rfidCode).ifPresent(labels::add);
+        }
+        return labels;
+    }
+
+    private String firstNonBlank(java.util.List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String catLabelsSummary(java.util.List<String> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return null;
+        }
+        return String.join("|", labels);
     }
 
     private String hash(String value) {

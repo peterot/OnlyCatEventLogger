@@ -10,6 +10,7 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.onlycat.ingest.config.SheetsProperties;
 import com.onlycat.ingest.model.OnlyCatEvent;
+import com.onlycat.ingest.service.CatLabelMapper;
 import com.onlycat.ingest.service.CatEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,17 +41,20 @@ public class GoogleSheetsAppender implements CatEventRepository {
 
     private final Sheets sheets;
     private final SheetsProperties properties;
+    private final CatLabelMapper catLabelMapper;
     private volatile boolean headerEnsured = false;
 
-    public GoogleSheetsAppender(SheetsProperties properties) {
+    public GoogleSheetsAppender(SheetsProperties properties, CatLabelMapper catLabelMapper) {
         this.properties = properties;
+        this.catLabelMapper = catLabelMapper;
         this.sheets = buildSheetsClient(properties);
     }
 
     @Override
     public synchronized void append(OnlyCatEvent event) {
         ensureHeader();
-        ValueRange body = new ValueRange().setValues(List.of(event.toRow()));
+        String mappedLabel = catLabelMapper.mapFinalLabel(event.catLabels());
+        ValueRange body = new ValueRange().setValues(List.of(event.toRow(mappedLabel)));
         try {
             sheets.spreadsheets().values()
                     .append(properties.getSpreadsheetId(), properties.getAppendRange(), body)
