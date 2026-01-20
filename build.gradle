@@ -11,6 +11,14 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+sourceSets {
+    test {
+        java {
+            srcDirs = ['src/test/unit/java', 'src/test/integration/java']
+        }
+    }
+}
+
 repositories {
     mavenCentral()
 }
@@ -31,6 +39,7 @@ dependencies {
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.corundumstudio.socketio:netty-socketio:2.0.10'
 }
 
 tasks.withType(Test).configureEach {
