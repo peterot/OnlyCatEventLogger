@@ -10,6 +10,7 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.onlycat.ingest.config.SheetsProperties;
 import com.onlycat.ingest.model.OnlyCatEvent;
+import com.onlycat.ingest.service.CatEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ import java.security.GeneralSecurityException;
 import java.util.List;
 
 @Component
-public class GoogleSheetsAppender {
+public class GoogleSheetsAppender implements CatEventRepository {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsAppender.class);
     private static final String VALUE_INPUT_OPTION = "RAW"; // Keep payload unmodified
     private static final List<Object> HEADER = List.of(
@@ -46,6 +47,7 @@ public class GoogleSheetsAppender {
         this.sheets = buildSheetsClient(properties);
     }
 
+    @Override
     public synchronized void append(OnlyCatEvent event) {
         ensureHeader();
         ValueRange body = new ValueRange().setValues(List.of(event.toRow()));
