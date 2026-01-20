@@ -1,6 +1,8 @@
 package com.onlycat.ingest.service;
 
 import com.onlycat.ingest.onlycat.OnlyCatEmitter;
+import com.onlycat.ingest.model.OnlyCatEventClassification;
+import com.onlycat.ingest.model.OnlyCatEventTriggerSource;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import com.onlycat.ingest.model.OnlyCatRfidEvent;
 import com.onlycat.ingest.model.OnlyCatRfidProfile;
@@ -276,8 +278,8 @@ public class CatEventEnrichmentService {
         if (classification == null) classification = readInt(userEventUpdate, "eventClassification");
 
         if (trigger != null) {
-            String triggerCode = mapEventTriggerSource(trigger);
-            String triggerPretty = prettyEventTriggerSource(trigger);
+            String triggerCode = OnlyCatEventTriggerSource.formatCode(trigger);
+            String triggerPretty = OnlyCatEventTriggerSource.formatLabel(trigger);
             userEventUpdate.put("eventTriggerSourceCode", triggerCode);
             userEventUpdate.put("eventTriggerSourceLabel", triggerPretty);
             body.put("eventTriggerSourceCode", triggerCode);
@@ -285,8 +287,8 @@ public class CatEventEnrichmentService {
         }
 
         if (classification != null) {
-            String classCode = mapEventClassification(classification);
-            String classPretty = prettyEventClassification(classification);
+            String classCode = OnlyCatEventClassification.formatCode(classification);
+            String classPretty = OnlyCatEventClassification.formatLabel(classification);
             userEventUpdate.put("eventClassificationCode", classCode);
             userEventUpdate.put("eventClassificationLabel", classPretty);
             body.put("eventClassificationCode", classCode);
@@ -319,49 +321,6 @@ public class CatEventEnrichmentService {
         return null;
     }
 
-    // Trigger source enum mapping: 0 MANUAL, 1 APP, 2 PET, 3 DEVICE
-    private String mapEventTriggerSource(int value) {
-        return switch (value) {
-            case 0 -> "MANUAL";
-            case 1 -> "APP";
-            case 2 -> "PET";
-            case 3 -> "DEVICE";
-            default -> "UNKNOWN(" + value + ")";
-        };
-    }
-
-    private String prettyEventTriggerSource(int value) {
-        return switch (value) {
-            case 0 -> "Manual";
-            case 1 -> "App";
-            case 2 -> "Pet";
-            case 3 -> "Device";
-            default -> "Unknown (" + value + ")";
-        };
-    }
-
-    // Classification enum mapping: 0 NONE, 1 MOVEMENT, 2 ENTRY, 3 EXIT, 4 PREY
-    private String mapEventClassification(int value) {
-        return switch (value) {
-            case 0 -> "NONE";
-            case 1 -> "MOVEMENT";
-            case 2 -> "ENTRY";
-            case 3 -> "EXIT";
-            case 4 -> "PREY";
-            default -> "UNKNOWN(" + value + ")";
-        };
-    }
-
-    private String prettyEventClassification(int value) {
-        return switch (value) {
-            case 0 -> "None";
-            case 1 -> "Movement";
-            case 2 -> "Entry";
-            case 3 -> "Exit";
-            case 4 -> "Prey";
-            default -> "Unknown (" + value + ")";
-        };
-    }
 
     @PreDestroy
     public void shutdown() {

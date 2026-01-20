@@ -3,6 +3,8 @@ package com.onlycat.ingest.onlycat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onlycat.ingest.config.OnlyCatProperties;
+import com.onlycat.ingest.model.OnlyCatEventClassification;
+import com.onlycat.ingest.model.OnlyCatEventTriggerSource;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import com.onlycat.ingest.model.OnlyCatRfidEvent;
 import com.onlycat.ingest.model.OnlyCatRfidProfile;
@@ -276,8 +278,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
         Integer eventId = parsed == null ? null : parsed.eventId();
         String eventType = parsed == null ? null : parsed.type();
-        Integer eventTriggerSource = parsed == null ? null : parsed.eventTriggerSource();
-        Integer eventClassification = parsed == null ? null : parsed.eventClassification();
+        Integer eventTriggerSourceCode = parsed == null ? null : parsed.eventTriggerSource();
+        Integer eventClassificationCode = parsed == null ? null : parsed.eventClassification();
         String deviceId = parsed == null ? null : parsed.deviceId();
         String timestamp = parsed == null ? null : parsed.timestamp();
         Long globalId = parsed == null ? null : parsed.globalId();
@@ -285,13 +287,16 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
         if (body != null) {
             if (eventId == null) eventId = body.eventId();
-            if (eventTriggerSource == null) eventTriggerSource = body.eventTriggerSource();
-            if (eventClassification == null) eventClassification = body.eventClassification();
+            if (eventTriggerSourceCode == null) eventTriggerSourceCode = body.eventTriggerSource();
+            if (eventClassificationCode == null) eventClassificationCode = body.eventClassification();
             if (!StringUtils.hasText(deviceId)) deviceId = body.deviceId();
             if (!StringUtils.hasText(timestamp)) timestamp = body.timestamp();
             if (globalId == null) globalId = body.globalId();
             if (!StringUtils.hasText(accessToken)) accessToken = body.accessToken();
         }
+
+        OnlyCatEventTriggerSource eventTriggerSource = OnlyCatEventTriggerSource.fromCode(eventTriggerSourceCode);
+        OnlyCatEventClassification eventClassification = OnlyCatEventClassification.fromCode(eventClassificationCode);
 
         return new OnlyCatInboundEvent(
                 event,
