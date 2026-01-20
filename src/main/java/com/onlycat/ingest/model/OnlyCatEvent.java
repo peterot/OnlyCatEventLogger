@@ -8,15 +8,15 @@ import java.util.Objects;
 public record OnlyCatEvent(
         Instant ingestedAtUtc,
         Instant eventTimeUtc,
+        String eventName,
         String eventType,
-        String direction,
-        String catName,
-        String catId,
-        String deviceName,
+        Integer eventId,
+        String eventTriggerSource,
+        String eventClassification,
+        Long globalId,
         String deviceId,
-        String outcome,
-        Boolean preyDetected,
-        String rawJson
+        String rfidCode,
+        String catLabel
 ) {
 
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_INSTANT;
@@ -25,15 +25,15 @@ public record OnlyCatEvent(
         return List.of(
                 ingestedAtUtc != null ? ISO.format(ingestedAtUtc) : "",
                 eventTimeUtc != null ? ISO.format(eventTimeUtc) : "",
+                nullToEmpty(eventName),
                 nullToEmpty(eventType),
-                nullToEmpty(direction),
-                nullToEmpty(catName),
-                nullToEmpty(catId),
-                nullToEmpty(deviceName),
+                eventId == null ? "" : String.valueOf(eventId),
+                nullToEmpty(eventTriggerSource),
+                nullToEmpty(eventClassification),
+                globalId == null ? "" : String.valueOf(globalId),
                 nullToEmpty(deviceId),
-                nullToEmpty(outcome),
-                preyDetected == null ? "" : String.valueOf(preyDetected),
-                nullToEmpty(rawJson)
+                nullToEmpty(rfidCode),
+                nullToEmpty(catLabel)
         );
     }
 

@@ -73,26 +73,29 @@ public class CatEventEnrichmentService {
     }
 
     private void ingest(OnlyCatInboundEvent inbound, String rfidCode, String catLabel) {
+        String triggerSource = inbound.eventTriggerSource() == null ? null : inbound.eventTriggerSource().prettyLabel();
+        String classification = inbound.eventClassification() == null ? null : inbound.eventClassification().prettyLabel();
         OnlyCatEvent event = new OnlyCatEvent(
                 java.time.Instant.now(),
                 parseInstant(inbound.timestamp()),
+                inbound.eventName(),
                 inbound.eventType() == null ? inbound.eventName() : inbound.eventType(),
-                "unknown",
-                catLabel,
-                rfidCode,
-                null,
+                inbound.eventId(),
+                triggerSource,
+                classification,
+                inbound.globalId(),
                 inbound.deviceId(),
-                "unknown",
-                null,
-                buildRawSummary(inbound, rfidCode, catLabel)
+                rfidCode,
+                catLabel
         );
-        String key = hash(inbound.eventName() + ":" + event.rawJson() + ":" + (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+        String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
+                (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
         if (dedupeCache.seen(key)) {
             log.debug("Duplicate event suppressed for key {}", key);
             return;
         }
         eventRepository.append(event);
-        log.info("Appended event type={} cat={} device={} time={}", event.eventType(), event.catId(), event.deviceId(), event.eventTimeUtc());
+        log.info("Appended event type={} cat={} device={} time={}", event.eventType(), event.catLabel(), event.deviceId(), event.eventTimeUtc());
     }
 
     private String hash(String value) {
@@ -114,27 +117,6 @@ public class CatEventEnrichmentService {
         } catch (Exception ignore) {
             return null;
         }
-    }
-
-    private String buildRawSummary(OnlyCatInboundEvent inbound, String rfidCode, String catLabel) {
-        StringBuilder sb = new StringBuilder(128);
-        sb.append("event=").append(inbound.eventName());
-        if (StringUtils.hasText(inbound.deviceId())) {
-            sb.append(" deviceId=").append(inbound.deviceId());
-        }
-        if (inbound.eventId() != null) {
-            sb.append(" eventId=").append(inbound.eventId());
-        }
-        if (StringUtils.hasText(inbound.timestamp())) {
-            sb.append(" timestamp=").append(inbound.timestamp());
-        }
-        if (StringUtils.hasText(rfidCode)) {
-            sb.append(" rfidCode=").append(rfidCode);
-        }
-        if (StringUtils.hasText(catLabel)) {
-            sb.append(" catLabel=").append(catLabel);
-        }
-        return sb.toString();
     }
 
     @jakarta.annotation.PreDestroy

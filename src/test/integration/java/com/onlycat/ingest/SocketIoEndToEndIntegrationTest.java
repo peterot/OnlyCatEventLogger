@@ -91,9 +91,11 @@ class SocketIoEndToEndIntegrationTest {
         OnlyCatEvent event = captured.get();
         assertThat(event).isNotNull();
         assertThat(event.eventType()).isEqualTo("create");
+        assertThat(event.eventName()).isEqualTo("userEventUpdate");
+        assertThat(event.eventId()).isEqualTo(1001);
         assertThat(event.deviceId()).isEqualTo("OC-TEST-DEVICE-1");
         assertThat(event.eventTimeUtc()).isEqualTo(Instant.parse("2026-01-18T22:29:59Z"));
-        assertThat(event.catName()).isEqualTo("Cleo");
+        assertThat(event.catLabel()).isEqualTo("Cleo");
     }
 
     private static SocketIOServer startServer() {

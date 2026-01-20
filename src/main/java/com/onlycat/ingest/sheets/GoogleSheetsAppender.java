@@ -27,15 +27,15 @@ public class GoogleSheetsAppender implements CatEventRepository {
     private static final List<Object> HEADER = List.of(
             "ingested_at_utc",
             "event_time_utc",
+            "event_name",
             "event_type",
-            "direction",
-            "cat_name",
-            "cat_id",
-            "device_name",
+            "event_id",
+            "event_trigger_source",
+            "event_classification",
+            "global_id",
             "device_id",
-            "outcome",
-            "prey_detected",
-            "raw_json"
+            "rfid_code",
+            "cat_label"
     );
 
     private final Sheets sheets;
