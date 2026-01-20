@@ -274,26 +274,15 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     private OnlyCatInboundEvent parseInboundEvent(String event, Object[] args) {
         Object payload = firstPayload(args);
         OnlyCatUserEventUpdatePayload parsed = readPayload(payload);
-        OnlyCatUserEventBody body = parsed == null ? null : parsed.body();
 
-        Integer eventId = parsed == null ? null : parsed.eventId();
+        Integer eventId = parsed == null ? null : parsed.effectiveEventId();
         String eventType = parsed == null ? null : parsed.type();
-        Integer eventTriggerSourceCode = parsed == null ? null : parsed.eventTriggerSource();
-        Integer eventClassificationCode = parsed == null ? null : parsed.eventClassification();
-        String deviceId = parsed == null ? null : parsed.deviceId();
-        String timestamp = parsed == null ? null : parsed.timestamp();
-        Long globalId = parsed == null ? null : parsed.globalId();
-        String accessToken = parsed == null ? null : parsed.accessToken();
-
-        if (body != null) {
-            if (eventId == null) eventId = body.eventId();
-            if (eventTriggerSourceCode == null) eventTriggerSourceCode = body.eventTriggerSource();
-            if (eventClassificationCode == null) eventClassificationCode = body.eventClassification();
-            if (!StringUtils.hasText(deviceId)) deviceId = body.deviceId();
-            if (!StringUtils.hasText(timestamp)) timestamp = body.timestamp();
-            if (globalId == null) globalId = body.globalId();
-            if (!StringUtils.hasText(accessToken)) accessToken = body.accessToken();
-        }
+        Integer eventTriggerSourceCode = parsed == null ? null : parsed.effectiveEventTriggerSource();
+        Integer eventClassificationCode = parsed == null ? null : parsed.effectiveEventClassification();
+        String deviceId = parsed == null ? null : parsed.effectiveDeviceId();
+        String timestamp = parsed == null ? null : parsed.effectiveTimestamp();
+        Long globalId = parsed == null ? null : parsed.effectiveGlobalId();
+        String accessToken = parsed == null ? null : parsed.effectiveAccessToken();
 
         OnlyCatEventTriggerSource eventTriggerSource = OnlyCatEventTriggerSource.fromCode(eventTriggerSourceCode);
         OnlyCatEventClassification eventClassification = OnlyCatEventClassification.fromCode(eventClassificationCode);
@@ -324,16 +313,6 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         }
         if (payload instanceof Map<?, ?> map) {
             return objectMapper.convertValue(map, OnlyCatUserEventUpdatePayload.class);
-        }
-        if (payload instanceof String s) {
-            String t = s.trim();
-            if (t.startsWith("{")) {
-                try {
-                    return objectMapper.readValue(t, OnlyCatUserEventUpdatePayload.class);
-                } catch (Exception ignore) {
-                    return null;
-                }
-            }
         }
         return null;
     }
@@ -375,8 +354,8 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return;
         }
 
-        JSONObject payload = new JSONObject();
-        payload.put("subscribe", true);
+        OnlyCatSubscribeRequest request = new OnlyCatSubscribeRequest(true);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
 
         log.info("Emitting read-only subscription: {} {}", event, payload);
         safeEmit(event, payload, ackArgs -> {
@@ -405,12 +384,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (!isAllowedEmit("getDevice")) {
             return;
         }
-        JSONObject p = new JSONObject();
-        p.put("deviceId", deviceId);
-        p.put("subscribe", true);
+        OnlyCatDeviceSubscribeRequest request = new OnlyCatDeviceSubscribeRequest(deviceId, true);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
 
-        log.info("Emitting read-only subscription: getDevice {}", p);
-        safeEmit("getDevice", p, ackArgs -> {
+        log.info("Emitting read-only subscription: getDevice {}", payload);
+        safeEmit("getDevice", payload, ackArgs -> {
             log.info("ACK for 'getDevice' ({}) -> {}", deviceId, Arrays.toString(ackArgs));
             handleAnyEvent("getDevice:ack", ackArgs);
         });
@@ -420,12 +398,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (!isAllowedEmit("getEvents")) {
             return;
         }
-        JSONObject p = new JSONObject();
-        p.put("subscribe", true);
-        p.put("limit", 1);
+        OnlyCatEventsSubscribeRequest request = new OnlyCatEventsSubscribeRequest(true, 1);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
 
-        log.info("Emitting read-only subscription: getEvents {}", p);
-        safeEmit("getEvents", p, ackArgs -> {
+        log.info("Emitting read-only subscription: getEvents {}", payload);
+        safeEmit("getEvents", payload, ackArgs -> {
             log.info("ACK for 'getEvents' -> {}", Arrays.toString(ackArgs));
             handleAnyEvent("getEvents:ack", ackArgs);
         });
@@ -441,12 +418,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             log.warn("Refusing to emit 'getLastSeenRfidCodesByDevice' because deviceId is blank");
             return List.of();
         }
-        JSONObject p = new JSONObject();
-        p.put("deviceId", deviceId);
-        p.put("limit", Math.max(1, limit));
-        log.info("Emitting read-only request: getLastSeenRfidCodesByDevice {}", p);
+        OnlyCatDeviceRfidRequest request = new OnlyCatDeviceRfidRequest(deviceId, Math.max(1, limit));
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
+        log.info("Emitting read-only request: getLastSeenRfidCodesByDevice {}", payload);
         CompletableFuture<Object[]> response = new CompletableFuture<>();
-        safeEmit("getLastSeenRfidCodesByDevice", p, response::complete);
+        safeEmit("getLastSeenRfidCodesByDevice", payload, response::complete);
         Object[] ackArgs = awaitAck("getLastSeenRfidCodesByDevice", response);
         return parseRfidEventsFromAck(ackArgs);
     }
@@ -461,11 +437,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             log.warn("Refusing to emit 'getRfidProfile' because rfidCode is blank");
             return Optional.empty();
         }
-        JSONObject p = new JSONObject();
-        p.put("rfidCode", rfidCode);
-        log.info("Emitting read-only request: getRfidProfile {}", p);
+        OnlyCatRfidProfileRequest request = new OnlyCatRfidProfileRequest(rfidCode);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
+        log.info("Emitting read-only request: getRfidProfile {}", payload);
         CompletableFuture<Object[]> response = new CompletableFuture<>();
-        safeEmit("getRfidProfile", p, response::complete);
+        safeEmit("getRfidProfile", payload, response::complete);
         Object[] ackArgs = awaitAck("getRfidProfile", response);
         return parseRfidProfileFromAck(ackArgs);
     }
