@@ -35,6 +35,7 @@ dependencies {
     implementation 'com.google.auth:google-auth-library-oauth2-http:1.22.0'
     // Use a published rev available on Maven Central.
     implementation 'com.google.apis:google-api-services-sheets:v4-rev20230815-2.0.0'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
