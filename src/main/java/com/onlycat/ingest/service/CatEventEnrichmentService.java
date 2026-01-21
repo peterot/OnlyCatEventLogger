@@ -1,6 +1,7 @@
 package com.onlycat.ingest.service;
 
 import com.onlycat.ingest.model.OnlyCatEvent;
+import com.onlycat.ingest.model.OnlyCatEventClassification;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,6 +104,19 @@ public class CatEventEnrichmentService {
         );
         String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
                 (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+        String eventKey = eventKey(inbound.eventId(), inbound.deviceId());
+        if (!isUserEventCreate(inbound)) {
+            if (eventKey == null || !pendingEventCache.hasPending(eventKey)) {
+                log.info("Skipping non-create event without pending match eventId={} deviceId={} eventName={}",
+                        inbound.eventId(), inbound.deviceId(), inbound.eventName());
+                return;
+            }
+            if (!isFinalClassification(inbound)) {
+                log.info("Skipping non-create event without final classification eventId={} deviceId={} eventName={}",
+                        inbound.eventId(), inbound.deviceId(), inbound.eventName());
+                return;
+            }
+        }
         Optional<OnlyCatEvent> finalEvent = pendingEventCache.apply(inbound, event);
         if (finalEvent.isEmpty()) {
             return;
@@ -144,6 +158,26 @@ public class CatEventEnrichmentService {
             return null;
         }
         return String.join("|", labels);
+    }
+
+    private boolean isFinalClassification(OnlyCatInboundEvent inbound) {
+        OnlyCatEventClassification classification = inbound.eventClassification();
+        return classification != null
+                && classification != OnlyCatEventClassification.UNKNOWN_CLASS
+                && classification != OnlyCatEventClassification.UNKNOWN;
+    }
+
+    private boolean isUserEventCreate(OnlyCatInboundEvent inbound) {
+        return inbound != null
+                && "userEventUpdate".equals(inbound.eventName())
+                && "create".equalsIgnoreCase(inbound.eventType());
+    }
+
+    private String eventKey(Integer eventId, String deviceId) {
+        if (eventId == null || !StringUtils.hasText(deviceId)) {
+            return null;
+        }
+        return eventId + ":" + deviceId;
     }
 
     private String hash(String value) {

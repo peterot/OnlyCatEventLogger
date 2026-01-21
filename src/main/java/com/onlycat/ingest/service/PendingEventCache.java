@@ -8,7 +8,6 @@ import com.onlycat.ingest.model.OnlyCatEventClassification;
 import com.onlycat.ingest.model.OnlyCatInboundEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -50,6 +49,13 @@ public class PendingEventCache {
         return Optional.of(event);
     }
 
+    public boolean hasPending(String eventKey) {
+        if (eventKey == null) {
+            return false;
+        }
+        return pendingEvents.getIfPresent(eventKey) != null;
+    }
+
     private boolean isFinalClassification(OnlyCatInboundEvent inbound) {
         OnlyCatEventClassification classification = inbound.eventClassification();
         return classification != null
@@ -74,7 +80,7 @@ public class PendingEventCache {
     }
 
     private String eventKey(OnlyCatInboundEvent inbound) {
-        if (inbound.eventId() == null || !StringUtils.hasText(inbound.deviceId())) {
+        if (inbound == null || inbound.eventId() == null || inbound.deviceId() == null) {
             return null;
         }
         return inbound.eventId() + ":" + inbound.deviceId();
