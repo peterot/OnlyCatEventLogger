@@ -3,8 +3,8 @@ package com.onlycat.ingest.model;
 public enum OnlyCatEventTriggerSource {
     MANUAL(0, "MANUAL", "Manual"),
     REMOTE(1, "REMOTE", "Remote"),
-    INDOOR_MOTION(2, "INDOOR_MOTION", "Indoor motion"),
-    OUTDOOR_MOTION(3, "OUTDOOR_MOTION", "Outdoor motion"),
+    INDOOR_MOTION(2, "EXIT_ALLOWED", "Exit Allowed"),
+    OUTDOOR_MOTION(3, "ENTRY_ALLOWED", "Entry Allowed"),
     UNKNOWN(-1, "UNKNOWN", "Unknown");
 
     private final int code;
