@@ -58,6 +58,18 @@ public class PendingEventCache {
                 event.eventId(), event.deviceId());
     }
 
+    public Optional<OnlyCatEvent> pop(String eventKey) {
+        if (eventKey == null) {
+            return Optional.empty();
+        }
+        OnlyCatEvent pending = pendingEvents.getIfPresent(eventKey);
+        if (pending != null) {
+            pendingEvents.invalidate(eventKey);
+            return Optional.of(pending);
+        }
+        return Optional.empty();
+    }
+
     public boolean hasPending(String eventKey) {
         if (eventKey == null) {
             return false;
