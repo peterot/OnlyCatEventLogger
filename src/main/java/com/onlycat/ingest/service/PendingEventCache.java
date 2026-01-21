@@ -49,6 +49,15 @@ public class PendingEventCache {
         return Optional.of(event);
     }
 
+    public void put(String eventKey, OnlyCatEvent event) {
+        if (eventKey == null || event == null) {
+            return;
+        }
+        pendingEvents.put(eventKey, event);
+        log.debug("Queued pending eventId={} deviceId={} awaiting classification update",
+                event.eventId(), event.deviceId());
+    }
+
     public boolean hasPending(String eventKey) {
         if (eventKey == null) {
             return false;

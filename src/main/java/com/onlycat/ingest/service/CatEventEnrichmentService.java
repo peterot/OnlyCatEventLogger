@@ -66,6 +66,11 @@ public class CatEventEnrichmentService {
             try {
                 // Only enrich create events with a known deviceId/eventId.
                 if (eventId != null && StringUtils.hasText(deviceId) && "create".equalsIgnoreCase(type)) {
+                    String eventKey = eventKey(eventId, deviceId);
+                    if (eventKey != null && !isFinalClassification(inbound)) {
+                        OnlyCatEvent pendingShell = buildEvent(inbound, null, List.of());
+                        pendingEventCache.put(eventKey, pendingShell);
+                    }
                     enrichmentExecutor.execute(() -> {
                         try {
                             List<String> rfidCodes = lastSeenRfidEventsCache.resolveRfidCodes(deviceId, eventId);
@@ -87,21 +92,7 @@ public class CatEventEnrichmentService {
     }
 
     private void ingest(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
-        String triggerSource = inbound.eventTriggerSource() == null ? null : inbound.eventTriggerSource().prettyLabel();
-        String classification = inbound.eventClassification() == null ? null : inbound.eventClassification().prettyLabel();
-        OnlyCatEvent event = new OnlyCatEvent(
-                Instant.now(),
-                parseInstant(inbound.timestamp()),
-                inbound.eventName(),
-                inbound.eventType() == null ? inbound.eventName() : inbound.eventType(),
-                inbound.eventId(),
-                triggerSource,
-                classification,
-                inbound.globalId(),
-                inbound.deviceId(),
-                rfidCode,
-                catLabels
-        );
+        OnlyCatEvent event = buildEvent(inbound, rfidCode, catLabels);
         String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
                 (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
         String eventKey = eventKey(inbound.eventId(), inbound.deviceId());
@@ -158,6 +149,24 @@ public class CatEventEnrichmentService {
             return null;
         }
         return String.join("|", labels);
+    }
+
+    private OnlyCatEvent buildEvent(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
+        String triggerSource = inbound.eventTriggerSource() == null ? null : inbound.eventTriggerSource().prettyLabel();
+        String classification = inbound.eventClassification() == null ? null : inbound.eventClassification().prettyLabel();
+        return new OnlyCatEvent(
+                Instant.now(),
+                parseInstant(inbound.timestamp()),
+                inbound.eventName(),
+                inbound.eventType() == null ? inbound.eventName() : inbound.eventType(),
+                inbound.eventId(),
+                triggerSource,
+                classification,
+                inbound.globalId(),
+                inbound.deviceId(),
+                rfidCode,
+                catLabels
+        );
     }
 
     private boolean isFinalClassification(OnlyCatInboundEvent inbound) {
