@@ -19,6 +19,7 @@ public class CatEventEnrichmentService {
     private final RfidLabelCache rfidLabelCache;
     private final LastSeenRfidEventsCache lastSeenRfidEventsCache;
     private final ExecutorService enrichmentExecutor;
+    private final PendingEventCache pendingEventCache;
 
     public CatEventEnrichmentService(CatEventRepository eventRepository,
                                      RfidLabelCache rfidLabelCache,
@@ -32,6 +33,7 @@ public class CatEventEnrichmentService {
             thread.setDaemon(true);
             return thread;
         });
+        this.pendingEventCache = new PendingEventCache(java.time.Duration.ofMinutes(10), 2048);
     }
 
     @EventListener
@@ -91,6 +93,11 @@ public class CatEventEnrichmentService {
         );
         String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
                 (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+        java.util.Optional<OnlyCatEvent> finalEvent = pendingEventCache.apply(inbound, event);
+        if (finalEvent.isEmpty()) {
+            return;
+        }
+        event = finalEvent.get();
         if (dedupeCache.seen(key)) {
             log.debug("Duplicate event suppressed for key {}", key);
             return;

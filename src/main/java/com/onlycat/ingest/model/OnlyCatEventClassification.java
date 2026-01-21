@@ -1,11 +1,12 @@
 package com.onlycat.ingest.model;
 
 public enum OnlyCatEventClassification {
-    NONE(0, "NONE", "None"),
-    MOVEMENT(1, "MOVEMENT", "Movement"),
-    ENTRY(2, "ENTRY", "Entry"),
-    EXIT(3, "EXIT", "Exit"),
-    PREY(4, "PREY", "Prey"),
+    UNKNOWN_CLASS(0, "UNKNOWN", "Unknown"),
+    CLEAR(1, "CLEAR", "Clear"),
+    SUSPICIOUS(2, "SUSPICIOUS", "Suspicious"),
+    CONTRABAND(3, "CONTRABAND", "Contraband"),
+    HUMAN_ACTIVITY(4, "HUMAN_ACTIVITY", "Human activity"),
+    REMOTE_UNLOCK(10, "REMOTE_UNLOCK", "Remote unlock"),
     UNKNOWN(-1, "UNKNOWN", "Unknown");
 
     private final int code;

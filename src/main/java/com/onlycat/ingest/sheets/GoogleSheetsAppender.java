@@ -15,7 +15,6 @@ import com.onlycat.ingest.service.CatEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -38,7 +37,6 @@ public class GoogleSheetsAppender implements CatEventRepository {
             "rfid_code",
             "cat_label"
     );
-
     private final Sheets sheets;
     private final SheetsProperties properties;
     private final CatLabelMapper catLabelMapper;

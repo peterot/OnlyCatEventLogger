@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,10 +57,12 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             "getLastSeenRfidCodesByDevice",
             "getRfidProfile"
     );
+    private static final long EVENTS_REFRESH_DELAY_MS = 1500;
 
     private final OnlyCatProperties properties;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final ScheduledExecutorService refreshExecutor;
 
     private final AtomicInteger sampleLogged = new AtomicInteger();
     private final AtomicInteger infoLogged = new AtomicInteger();
@@ -75,6 +79,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         this.properties = properties;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.refreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread thread = new Thread(r, "onlycat-event-refresh");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @Override
@@ -270,7 +279,9 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
     private void handleAnyEvent(String event, Object[] args) {
         logInbound(event, args);
-        eventPublisher.publishEvent(parseInboundEvent(event, args));
+        OnlyCatInboundEvent inbound = parseInboundEvent(event, args);
+        scheduleEventRefresh(inbound);
+        eventPublisher.publishEvent(inbound);
     }
 
     private OnlyCatInboundEvent parseInboundEvent(String event, Object[] args) {
@@ -318,19 +329,68 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     private OnlyCatUserEventUpdatePayload readPayload(Object payload) {
-        if (payload == null) {
+        Object candidate = findPayloadObject(payload);
+        if (candidate == null) {
             return null;
         }
-        if (payload instanceof OnlyCatUserEventUpdatePayload typed) {
+        if (candidate instanceof OnlyCatUserEventUpdatePayload typed) {
             return typed;
         }
-        if (payload instanceof JSONObject jo) {
+        if (candidate instanceof JSONObject jo) {
             return objectMapper.convertValue(jo.toMap(), OnlyCatUserEventUpdatePayload.class);
         }
-        if (payload instanceof Map<?, ?> map) {
+        if (candidate instanceof Map<?, ?> map) {
             return objectMapper.convertValue(map, OnlyCatUserEventUpdatePayload.class);
         }
         return null;
+    }
+
+    private Object findPayloadObject(Object payload) {
+        if (payload == null) {
+            return null;
+        }
+        if (payload instanceof OnlyCatUserEventUpdatePayload) {
+            return payload;
+        }
+        if (payload instanceof JSONObject jo) {
+            return isUserEventPayload(jo) ? payload : null;
+        }
+        if (payload instanceof Map<?, ?> map) {
+            return isUserEventPayload(map) ? payload : null;
+        }
+        if (payload instanceof JSONArray array) {
+            for (int i = 0; i < array.length(); i++) {
+                Object candidate = findPayloadObject(array.opt(i));
+                if (candidate != null) {
+                    return candidate;
+                }
+            }
+        }
+        if (payload instanceof List<?> list) {
+            for (Object item : list) {
+                Object candidate = findPayloadObject(item);
+                if (candidate != null) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isUserEventPayload(JSONObject payload) {
+        return payload.has("type")
+                || payload.has("body")
+                || payload.has("eventClassification")
+                || payload.has("eventTriggerSource")
+                || payload.has("accessToken");
+    }
+
+    private boolean isUserEventPayload(Map<?, ?> payload) {
+        return payload.containsKey("type")
+                || payload.containsKey("body")
+                || payload.containsKey("eventClassification")
+                || payload.containsKey("eventTriggerSource")
+                || payload.containsKey("accessToken");
     }
 
     private Object firstPayload(Object[] args) {
@@ -420,6 +480,20 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         log.info("Emitting read-only subscription: getEvents {}", payload);
         safeEmit("getEvents", payload, ackArgs -> {
             log.info("ACK for 'getEvents' -> {}", Arrays.toString(ackArgs));
+            handleAnyEvent("getEvents:ack", ackArgs);
+        });
+    }
+
+    private void emitGetEventsRefresh(String reason) {
+        if (!isAllowedEmit("getEvents")) {
+            return;
+        }
+        OnlyCatEventsSubscribeRequest request = new OnlyCatEventsSubscribeRequest(false, 1);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
+
+        log.info("Emitting read-only refresh: getEvents {} reason={}", payload, reason);
+        safeEmit("getEvents", payload, ackArgs -> {
+            log.info("ACK for 'getEvents' refresh -> {}", Arrays.toString(ackArgs));
             handleAnyEvent("getEvents:ack", ackArgs);
         });
     }
@@ -635,6 +709,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     @Override
     public void close() {
         disconnect();
+        refreshExecutor.shutdownNow();
     }
 
     private class AnyInvocationHandler implements InvocationHandler {
@@ -650,6 +725,22 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         }
     }
 
+    private void scheduleEventRefresh(OnlyCatInboundEvent inbound) {
+        if (inbound == null || inbound.eventId() == null) {
+            return;
+        }
+        if (!"userEventUpdate".equals(inbound.eventName())) {
+            return;
+        }
+        if (!"create".equalsIgnoreCase(inbound.eventType())) {
+            return;
+        }
+        refreshExecutor.schedule(
+                () -> emitGetEventsRefresh("post-create"),
+                EVENTS_REFRESH_DELAY_MS,
+                TimeUnit.MILLISECONDS
+        );
+    }
 
     private void logInbound(String event, Object[] args) {
         int n = infoLogged.getAndIncrement();

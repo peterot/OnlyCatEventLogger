@@ -2,9 +2,9 @@ package com.onlycat.ingest.model;
 
 public enum OnlyCatEventTriggerSource {
     MANUAL(0, "MANUAL", "Manual"),
-    APP(1, "APP", "App"),
-    PET(2, "PET", "Pet"),
-    DEVICE(3, "DEVICE", "Device"),
+    REMOTE(1, "REMOTE", "Remote"),
+    INDOOR_MOTION(2, "INDOOR_MOTION", "Indoor motion"),
+    OUTDOOR_MOTION(3, "OUTDOOR_MOTION", "Outdoor motion"),
     UNKNOWN(-1, "UNKNOWN", "Unknown");
 
     private final int code;

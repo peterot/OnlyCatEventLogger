@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +73,7 @@ class SocketIoEndToEndIntegrationTest {
         Map<String, Object> body = new HashMap<>();
         body.put("eventId", 1001);
         body.put("eventTriggerSource", "2");
-        body.put("eventClassification", 0);
+        body.put("eventClassification", 1);
         body.put("globalId", 900001);
         body.put("accessToken", "test-token");
         body.put("deviceId", "OC-TEST-DEVICE-1");
@@ -95,7 +96,58 @@ class SocketIoEndToEndIntegrationTest {
         assertThat(event.eventId()).isEqualTo(1001);
         assertThat(event.deviceId()).isEqualTo("OC-TEST-DEVICE-1");
         assertThat(event.eventTimeUtc()).isEqualTo(Instant.parse("2026-01-18T22:29:59Z"));
-        assertThat(event.catLabel()).isEqualTo("Cleo");
+        assertThat(event.catLabels()).contains("Cleo");
+    }
+
+    @Test
+    void delaysAppendUntilFinalClassificationArrives() throws Exception {
+        CountDownLatch appended = new CountDownLatch(1);
+        AtomicReference<OnlyCatEvent> captured = new AtomicReference<>();
+        AtomicInteger appendCount = new AtomicInteger();
+
+        Mockito.doAnswer(invocation -> {
+            OnlyCatEvent event = invocation.getArgument(0);
+            captured.set(event);
+            appendCount.incrementAndGet();
+            appended.countDown();
+            return null;
+        }).when(sheetsAppender).append(any(OnlyCatEvent.class));
+
+        assertThat(connected.await(5, TimeUnit.SECONDS)).isTrue();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("eventId", 2002);
+        body.put("eventTriggerSource", "2");
+        body.put("eventClassification", 0);
+        body.put("globalId", 900002);
+        body.put("accessToken", "test-token");
+        body.put("deviceId", "OC-TEST-DEVICE-1");
+        body.put("timestamp", "2026-01-18T22:30:59.000Z");
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("eventId", 2002);
+        payload.put("type", "create");
+        payload.put("body", body);
+        payload.put("deviceId", "OC-TEST-DEVICE-1");
+
+        SERVER.getBroadcastOperations().sendEvent("userEventUpdate", payload);
+
+        assertThat(appended.await(750, TimeUnit.MILLISECONDS)).isFalse();
+
+        Map<String, Object> updatedBody = new HashMap<>(body);
+        updatedBody.put("eventClassification", 1);
+        Map<String, Object> updatedPayload = new HashMap<>(payload);
+        updatedPayload.put("body", updatedBody);
+
+        SERVER.getBroadcastOperations().sendEvent("userEventUpdate", updatedPayload);
+
+        assertThat(appended.await(10, TimeUnit.SECONDS)).isTrue();
+
+        OnlyCatEvent event = captured.get();
+        assertThat(event).isNotNull();
+        assertThat(event.eventId()).isEqualTo(2002);
+        assertThat(event.eventClassification()).isEqualTo("Clear");
+        assertThat(appendCount.get()).isEqualTo(1);
     }
 
     private static SocketIOServer startServer() {
