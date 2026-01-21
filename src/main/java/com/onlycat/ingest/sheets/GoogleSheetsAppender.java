@@ -15,6 +15,7 @@ import com.onlycat.ingest.service.CatEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -91,7 +92,7 @@ public class GoogleSheetsAppender implements CatEventRepository {
     private Sheets buildSheetsClient(SheetsProperties properties) {
         try {
             String credentialsPath = properties.getCredentialsPath();
-            java.io.File credentialsFile = new java.io.File(credentialsPath);
+            File credentialsFile = new File(credentialsPath);
             if (!credentialsFile.exists()) {
                 throw new IllegalStateException("Google Sheets credentials file not found at " + credentialsPath);
             }

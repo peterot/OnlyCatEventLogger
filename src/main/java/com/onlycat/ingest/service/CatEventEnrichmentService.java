@@ -7,6 +7,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import jakarta.annotation.PreDestroy;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,7 +43,7 @@ public class CatEventEnrichmentService {
             thread.setDaemon(true);
             return thread;
         });
-        this.pendingEventCache = new PendingEventCache(java.time.Duration.ofMinutes(10), 2048);
+        this.pendingEventCache = new PendingEventCache(Duration.ofMinutes(10), 2048);
     }
 
     @EventListener
@@ -57,12 +67,12 @@ public class CatEventEnrichmentService {
                 if (eventId != null && StringUtils.hasText(deviceId) && "create".equalsIgnoreCase(type)) {
                     enrichmentExecutor.execute(() -> {
                         try {
-                            java.util.List<String> rfidCodes = lastSeenRfidEventsCache.resolveRfidCodes(deviceId, eventId);
-                            java.util.List<String> labels = resolveLabels(rfidCodes);
+                            List<String> rfidCodes = lastSeenRfidEventsCache.resolveRfidCodes(deviceId, eventId);
+                            List<String> labels = resolveLabels(rfidCodes);
                             ingest(inbound, firstNonBlank(rfidCodes), labels);
                         } catch (Exception ex) {
                             log.debug("UserEvent enrichment failed; ingesting raw event", ex);
-                            ingest(inbound, null, java.util.List.of());
+                            ingest(inbound, null, List.of());
                         }
                     });
                     return;
@@ -72,14 +82,14 @@ public class CatEventEnrichmentService {
             }
         }
 
-        ingest(inbound, null, java.util.List.of());
+        ingest(inbound, null, List.of());
     }
 
-    private void ingest(OnlyCatInboundEvent inbound, String rfidCode, java.util.List<String> catLabels) {
+    private void ingest(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
         String triggerSource = inbound.eventTriggerSource() == null ? null : inbound.eventTriggerSource().prettyLabel();
         String classification = inbound.eventClassification() == null ? null : inbound.eventClassification().prettyLabel();
         OnlyCatEvent event = new OnlyCatEvent(
-                java.time.Instant.now(),
+                Instant.now(),
                 parseInstant(inbound.timestamp()),
                 inbound.eventName(),
                 inbound.eventType() == null ? inbound.eventName() : inbound.eventType(),
@@ -93,7 +103,7 @@ public class CatEventEnrichmentService {
         );
         String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
                 (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
-        java.util.Optional<OnlyCatEvent> finalEvent = pendingEventCache.apply(inbound, event);
+        Optional<OnlyCatEvent> finalEvent = pendingEventCache.apply(inbound, event);
         if (finalEvent.isEmpty()) {
             return;
         }
@@ -106,18 +116,18 @@ public class CatEventEnrichmentService {
         log.info("Appended event type={} cats={} device={} time={}", event.eventType(), catLabelsSummary(event.catLabels()), event.deviceId(), event.eventTimeUtc());
     }
 
-    private java.util.List<String> resolveLabels(java.util.List<String> rfidCodes) {
+    private List<String> resolveLabels(List<String> rfidCodes) {
         if (rfidCodes == null || rfidCodes.isEmpty()) {
-            return java.util.List.of();
+            return List.of();
         }
-        java.util.List<String> labels = new java.util.ArrayList<>();
+        List<String> labels = new ArrayList<>();
         for (String rfidCode : rfidCodes) {
             rfidLabelCache.getLabel(rfidCode).ifPresent(labels::add);
         }
         return labels;
     }
 
-    private String firstNonBlank(java.util.List<String> values) {
+    private String firstNonBlank(List<String> values) {
         if (values == null || values.isEmpty()) {
             return null;
         }
@@ -129,7 +139,7 @@ public class CatEventEnrichmentService {
         return null;
     }
 
-    private String catLabelsSummary(java.util.List<String> labels) {
+    private String catLabelsSummary(List<String> labels) {
         if (labels == null || labels.isEmpty()) {
             return null;
         }
@@ -138,26 +148,26 @@ public class CatEventEnrichmentService {
 
     private String hash(String value) {
         try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return java.util.HexFormat.of().formatHex(bytes);
-        } catch (java.security.NoSuchAlgorithmException e) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(bytes);
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 
-    private java.time.Instant parseInstant(String value) {
+    private Instant parseInstant(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
         try {
-            return java.time.Instant.parse(value);
+            return Instant.parse(value);
         } catch (Exception ignore) {
             return null;
         }
     }
 
-    @jakarta.annotation.PreDestroy
+    @PreDestroy
     public void shutdown() {
         enrichmentExecutor.shutdownNow();
     }

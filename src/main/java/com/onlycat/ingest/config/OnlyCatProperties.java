@@ -1,6 +1,7 @@
 package com.onlycat.ingest.config;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -32,7 +33,7 @@ public class OnlyCatProperties {
     /**
      * Optional list of subscription events to emit after connect (no payload).
      */
-    private java.util.List<String> subscribeEvents = java.util.List.of();
+    private List<String> subscribeEvents = List.of();
 
     /**
      * Whether to send auth payload in the Socket.IO CONNECT packet.
@@ -86,11 +87,11 @@ public class OnlyCatProperties {
         this.namespace = namespace;
     }
 
-    public java.util.List<String> getSubscribeEvents() {
+    public List<String> getSubscribeEvents() {
         return subscribeEvents;
     }
 
-    public void setSubscribeEvents(java.util.List<String> subscribeEvents) {
+    public void setSubscribeEvents(List<String> subscribeEvents) {
         this.subscribeEvents = subscribeEvents;
     }
 
