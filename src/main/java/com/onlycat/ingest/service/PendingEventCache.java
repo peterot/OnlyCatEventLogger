@@ -35,18 +35,18 @@ public class PendingEventCache {
         if (eventKey == null) {
             return Optional.of(event);
         }
-        if (!isFinalClassification(inbound)) {
-            pendingEvents.put(eventKey, event);
-            log.debug("Queued pending eventId={} deviceId={} awaiting classification update",
-                    inbound.eventId(), inbound.deviceId());
-            return Optional.empty();
-        }
         OnlyCatEvent pending = pendingEvents.getIfPresent(eventKey);
-        if (pending != null) {
+        OnlyCatEvent merged = pending != null ? mergePending(pending, event) : event;
+        boolean finalClassification = isFinalClassification(inbound) || isFinalClassificationLabel(merged.eventClassification());
+        boolean enriched = isEnriched(merged);
+        if (finalClassification && enriched) {
             pendingEvents.invalidate(eventKey);
-            return Optional.of(mergePending(pending, event));
+            return Optional.of(merged);
         }
-        return Optional.of(event);
+        pendingEvents.put(eventKey, merged);
+        log.debug("Queued pending eventId={} deviceId={} awaiting classification/enrichment",
+                merged.eventId(), merged.deviceId());
+        return Optional.empty();
     }
 
     public void put(String eventKey, OnlyCatEvent event) {
@@ -95,9 +95,17 @@ public class PendingEventCache {
                 updated.eventClassification() != null ? updated.eventClassification() : pending.eventClassification(),
                 updated.globalId() != null ? updated.globalId() : pending.globalId(),
                 updated.deviceId() != null ? updated.deviceId() : pending.deviceId(),
-                pending.rfidCode(),
-                pending.catLabels()
+                updated.rfidCode() != null ? updated.rfidCode() : pending.rfidCode(),
+                updated.catLabels() != null ? updated.catLabels() : pending.catLabels()
         );
+    }
+
+    private boolean isFinalClassificationLabel(String classification) {
+        return classification != null && !classification.isBlank() && !"Unknown".equalsIgnoreCase(classification);
+    }
+
+    private boolean isEnriched(OnlyCatEvent event) {
+        return event != null && event.catLabels() != null;
     }
 
     private String eventKey(OnlyCatInboundEvent inbound) {

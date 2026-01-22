@@ -78,7 +78,7 @@ public class CatEventEnrichmentService {
                 if (eventId != null && StringUtils.hasText(deviceId) && "create".equalsIgnoreCase(type)) {
                     String eventKey = eventKey(eventId, deviceId);
                     if (eventKey != null && !isFinalClassification(inbound)) {
-                        OnlyCatEvent pendingShell = buildEvent(inbound, null, List.of());
+                        OnlyCatEvent pendingShell = buildEvent(inbound, null, null);
                         pendingEventCache.put(eventKey, pendingShell);
                         schedulePendingFallback(eventKey);
                     }
@@ -99,13 +99,12 @@ public class CatEventEnrichmentService {
             }
         }
 
-        ingest(inbound, null, List.of());
+        ingest(inbound, null, null);
     }
 
     private void ingest(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
         OnlyCatEvent event = buildEvent(inbound, rfidCode, catLabels);
-        String key = hash(inbound.eventName() + ":" + inbound.eventId() + ":" + inbound.deviceId() + ":" +
-                (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+        String key = dedupeKey(inbound, event);
         String eventKey = eventKey(inbound.eventId(), inbound.deviceId());
         if (!isUserEventCreate(inbound)) {
             if (eventKey == null || !pendingEventCache.hasPending(eventKey)) {
@@ -229,8 +228,7 @@ public class CatEventEnrichmentService {
                 return;
             }
             OnlyCatEvent event = pending.get();
-            String dedupeKey = hash(event.eventName() + ":" + event.eventId() + ":" + event.deviceId() + ":" +
-                    (event.eventTimeUtc() != null ? event.eventTimeUtc().toEpochMilli() : ""));
+            String dedupeKey = dedupeKey(event.eventId(), event.deviceId(), event.eventTimeUtc());
             log.info("Appending pending event after timeout eventId={} deviceId={}", event.eventId(), event.deviceId());
             appendIfNotSeen(event, dedupeKey);
         }, pendingFallbackDelayMs, TimeUnit.MILLISECONDS);
@@ -243,5 +241,17 @@ public class CatEventEnrichmentService {
         }
         eventRepository.append(event);
         log.info("Appended event type={} cats={} device={} time={}", event.eventType(), catLabelsSummary(event.catLabels()), event.deviceId(), event.eventTimeUtc());
+    }
+
+    private String dedupeKey(OnlyCatInboundEvent inbound, OnlyCatEvent event) {
+        return dedupeKey(inbound.eventId(), inbound.deviceId(), event.eventTimeUtc());
+    }
+
+    private String dedupeKey(Integer eventId, String deviceId, Instant eventTimeUtc) {
+        if (eventId != null && StringUtils.hasText(deviceId)) {
+            return hash(eventId + ":" + deviceId);
+        }
+        return hash((eventId == null ? "" : eventId) + ":" + deviceId + ":" +
+                (eventTimeUtc != null ? eventTimeUtc.toEpochMilli() : ""));
     }
 }
