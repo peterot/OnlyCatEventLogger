@@ -1,6 +1,6 @@
 # OnlyCatEventLogger
 
-Listens to the OnlyCat catflap Socket.IO API and appends every event to a Google Sheet (the Sheet is the source of truth).
+Listens to the OnlyCat catflap Socket.IO API and appends every event to a Google Sheet (the Sheet is the source of truth). This gives you a clean, raw activity log of your cat’s comings and goings so you can see real patterns in flap use over time. The repo also includes a Google Sheets Apps Script that builds a few starter summaries (sessions, stats, contraband, cats) so you can move from raw events to quick insights without leaving the spreadsheet.
 
 ## Prerequisites
 - Java 17+
