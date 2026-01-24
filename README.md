@@ -53,11 +53,50 @@ cat-label-mapping:
     "Cleo 2": "Cleo"
 ```
 
-## Step 3: Start the service
+## Step 3a: Run once (foreground)
 ```bash
 ./gradlew bootRun
 ```
+This runs in your terminal and will stop if you close the terminal or log out.
 Make sure `sheets.credentialsPath` points to a real JSON file before running.
+
+## Step 3b: Run in the background (auto-start on reboot)
+This installs the app to `/Applications/OnlyCatEventLogger` and runs it at boot, even when no user is logged in.
+
+1) Build a runnable jar:
+```bash
+./gradlew bootJar
+```
+
+2) Install the app to `/Applications`:
+Shortcut: run the installer script to do everything automatically:
+```bash
+scripts/install_launchd.sh
+```
+
+If you don't want to run the script you can follow the detailed steps below.
+
+```bash
+sudo mkdir -p /Applications/OnlyCatEventLogger
+sudo cp build/libs/*.jar /Applications/OnlyCatEventLogger/OnlyCatEventLogger.jar
+sudo cp src/main/resources/application.yml /Applications/OnlyCatEventLogger/application.yml
+```
+
+3) Create a launchd job at `/Library/LaunchDaemons/com.onlycat.eventlogger.plist` (template in `scripts/com.onlycat.eventlogger.plist`):
+
+Save that file, then load it:
+```bash
+sudo launchctl load -w /Library/LaunchDaemons/com.onlycat.eventlogger.plist
+```
+
+To stop it:
+```bash
+sudo launchctl unload -w /Library/LaunchDaemons/com.onlycat.eventlogger.plist
+```
+
+Notes:
+- Edit `/Applications/OnlyCatEventLogger/application.yml` when you need to update config.
+- Logs will appear in `/Library/Logs/OnlyCatEventLogger.out.log` and `/Library/Logs/OnlyCatEventLogger.err.log`.
 
 ## Step 4 (optional): Add the Google Sheets Apps Script
 This adds helpful summary sheets (Sessions, Stats, Contraband, Cats) to your spreadsheet.
