@@ -111,6 +111,98 @@ Notes:
   `event_time_utc`, `event_trigger_source`, `event_classification`, `rfid_code`, `cat_label`
 - These headers are written automatically by the app when the sheet is empty.
 
+## Step 5 (optional): ChatGPT (AI bot) integration (Apps Script Web App + Apple Shortcut)
+
+This step makes your cats' activities queryable with your favoiurite AI bot.
+
+This adds a second Google Sheets Apps Script that exposes a **Web App endpoint** you can call from an Apple Shortcut. The shortcut grabs a compact JSON “snapshot” (who’s in/out, recent trips, unknown visitors, contraband incidents, etc.), copies it to your clipboard, and opens ChatGPT — so you can paste once and then ask questions like a normal conversation.
+
+Example questions you can ask ChatGPT after pasting the snapshot:
+- **“How long has Cleo been outside today?”**
+- **“What were Hamish’s longest trips in the last 30 days?”**
+- **“Do we have any unknown visitors, and when were they last seen?”**
+- **“Any contraband incidents recently?”**
+- **“Are the cats going out more or less than last month?”**
+
+Want ChatGPT to respond differently the moment you paste the snapshot? The Web App script includes a `buildChatGptPrompt(...)` helper that prepends a “system style” instruction to the returned JSON (the default asks for a friendly, short status summary first, then to wait for your question). You can tweak that function to match your vibe — for example:
+- more/less verbose summaries
+- “numbers-first” output
+- different tone (more formal, more playful)
+- extra guardrails (eg, always cite which table/field a claim came from)
+
+Look in `scripts/chatgpt_apps_script.gs` for `buildChatGptPrompt` and edit the text there.
+
+### 5a) Install the ChatGPT Apps Script
+1) In your Google Sheet, go to **Extensions → Apps Script**.
+2) Create a **new script file** (e.g. `chatgpt_apps_script.gs`).
+3) Paste in the contents of `scripts/chatgpt_apps_script.gs` from this repo.
+4) Save.
+
+Notes:
+- This script is designed to **refresh the summary tabs** before returning JSON.
+- If you see an error like `Cannot call SpreadsheetApp.getUi() from this context.` in the JSON, that’s expected when running as a Web App — UI calls only work when you click menu items inside the Sheet.
+
+### 5b) Add your token (Script Properties)
+The Web App uses a token as its security.
+
+1) In Apps Script, open **Project Settings**.
+2) Under **Script Properties**, add:
+   - **Property**: `ONLYCAT_API_TOKEN`
+   - **Value**: `<your-random-long-token>`
+
+Tip: Use something long and unguessable (password-manager style).
+
+### 5c) Deploy as a Web App
+1) In Apps Script, click **Deploy → New deployment**.
+2) Select **Web app**.
+3) Set:
+   - **Execute as**: **Me** (the deploying user)
+   - **Who has access**: **Anyone**
+
+Why “Anyone”? Because the token is the gatekeeper. (Treat the token like a password.)
+
+4) Click **Deploy** and authorize permissions.
+5) Copy the **Web app URL**.
+
+When you edit the script later:
+- Use **Deploy → Manage deployments → Edit** and deploy a **new version**, otherwise you’ll keep hitting the old code.
+
+### 5d) Test the endpoint with curl
+Replace `WEB_APP_URL` and `TOKEN`.
+
+Query parameter (simple + reliable):
+```bash
+curl -s "WEB_APP_URL?token=TOKEN" 
+```
+
+### 5e) Apple Shortcut (simple “copy JSON → open ChatGPT”)
+This is a quick, low-friction flow:
+
+1) Create a new Shortcut (e.g. **OnlyCat → ChatGPT**).
+2) Add actions in this order:
+   1. **Get Contents of URL**
+      - URL: `WEB_APP_URL?token=TOKEN`
+      - Method: `GET`
+   2. **Copy to Clipboard**
+      - Input: the result of **Get Contents of URL**
+   3. **Start Conversation with ChatGPT**
+
+![Shortcut screenshot](images/shortcut_screenshot.png)
+
+
+Usage:
+- Run the Shortcut.
+- When ChatGPT opens, hit **Paste**.
+- ChatGPT will typically give a short “current state” summary, then you can chat normally (e.g., longest trips today, unknown visitors, contraband incidents, etc.).
+
+### 5f) Add to Home Screen
+On iPhone/iPad:
+- In the Shortcuts app, open the shortcut → **Share** → **Add to Home Screen**.
+
+### Security notes
+- If you put the token in the **URL query string**, it can appear in browser history and logs. It’s fine for personal use, but treat it carefully.
+- Consider rotating the token if you ever share screenshots/URLs or suspect exposure.
+
 ## Troubleshooting
 - **No rows appear in the Sheet**: Confirm the app is running and connected, then check that `sheets.spreadsheetId` matches the long ID in the Sheet URL (between `/d/` and `/edit`).  
 - **“Permission denied” or “The caller does not have permission”**: The Sheet must be shared with the **service account email** found inside your JSON file under `client_email`.  
