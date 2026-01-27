@@ -99,10 +99,10 @@ Notes:
 - Logs will appear in `/Library/Logs/OnlyCatEventLogger.out.log` and `/Library/Logs/OnlyCatEventLogger.err.log`.
 
 ## Step 4 (optional): Add the Google Sheets Apps Script
-This adds helpful summary sheets (Sessions, Stats, Contraband, Cats) to your spreadsheet.
+You only need **one** Apps Script. The all-in-one script is `scripts/apps_script.gs` (summary sheets + Status tab + Web App endpoint for ChatGPT/Shortcuts).
 
 1) In your Google Sheet, go to **Extensions → Apps Script**.  
-2) Replace the contents with `scripts/apps_script.js` from this repo.  
+2) Paste in **one** of the scripts above.  
 3) Save, then reload the Google Sheet.  
 4) You should see a new menu: **OnlyCat → Refresh stats**.
 
@@ -113,9 +113,9 @@ Notes:
 
 ## Step 5 (optional): ChatGPT (AI bot) integration (Apps Script Web App + Apple Shortcut)
 
-This step makes your cats' activities queryable with your favoiurite AI bot.
+This step makes your cats' activities queryable with your favourite AI bot.
 
-This adds a second Google Sheets Apps Script that exposes a **Web App endpoint** you can call from an Apple Shortcut. The shortcut grabs a compact JSON “snapshot” (who’s in/out, recent trips, unknown visitors, contraband incidents, etc.), copies it to your clipboard, and opens ChatGPT — so you can paste once and then ask questions like a normal conversation.
+Use `scripts/apps_script.gs` (from Step 4) to expose a **Web App endpoint** you can call from an Apple Shortcut. The shortcut grabs a compact JSON “snapshot” (who’s in/out, recent trips, unknown visitors, contraband incidents, etc.), copies it to your clipboard, and opens ChatGPT — so you can paste once and then ask questions like a normal conversation.
 
 Example questions you can ask ChatGPT after pasting the snapshot:
 - **“How long has Cleo been outside today?”**
@@ -130,12 +130,12 @@ Want ChatGPT to respond differently the moment you paste the snapshot? The Web A
 - different tone (more formal, more playful)
 - extra guardrails (eg, always cite which table/field a claim came from)
 
-Look in `scripts/chatgpt_apps_script.gs` for `buildChatGptPrompt` and edit the text there.
+Look in `scripts/apps_script.gs` for `buildChatGptPrompt` and edit the text there.
 
-### 5a) Install the ChatGPT Apps Script
+### 5a) Install the Apps Script
 1) In your Google Sheet, go to **Extensions → Apps Script**.
-2) Create a **new script file** (e.g. `chatgpt_apps_script.gs`).
-3) Paste in the contents of `scripts/chatgpt_apps_script.gs` from this repo.
+2) Create a **new script file** (e.g. `apps_script.gs`) if you haven't already done it for step 4.
+3) Paste in the contents of `scripts/apps_script.gs` from this repo.
 4) Save.
 
 Notes:
