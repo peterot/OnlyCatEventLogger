@@ -645,13 +645,16 @@ function buildContraband_(events, last30Start) {
 }
 
 /* -----------------------------
- * Cats list (keeps UNKNOWN here)
+ * Cats list (RFID-only)
  * ----------------------------- */
 
 function buildCats_(events, sessions, tz) {
   const byCat = new Map();
 
   for (const e of events) {
+    // Skip any events without an RFID tag (e.g., human tests / UNKNOWNs)
+    if (e.rfid_code === "" || e.rfid_code === null || e.rfid_code === undefined) continue;
+
     if (!byCat.has(e.cat_id)) {
       byCat.set(e.cat_id, {
         cat_id: e.cat_id,
