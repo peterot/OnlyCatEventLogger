@@ -30,9 +30,10 @@ public class CatLabelMapper {
             if (!StringUtils.hasText(label)) {
                 continue;
             }
-            String resolved = aliases.getOrDefault(label, label);
+            String normalized = label.trim();
+            String resolved = aliases.getOrDefault(normalized, normalized);
             if (StringUtils.hasText(resolved)) {
-                mapped.add(resolved);
+                mapped.add(resolved.trim());
             }
         }
         if (mapped.isEmpty()) {
