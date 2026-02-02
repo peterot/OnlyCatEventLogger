@@ -17,9 +17,11 @@ public class CatLabelMapper {
     private static final Logger log = LoggerFactory.getLogger(CatLabelMapper.class);
 
     private final Map<String, String> aliases;
+    private final Map<String, String> aliasesCompact;
 
     public CatLabelMapper(CatLabelMappingProperties properties) {
         this.aliases = normalizeAliases(properties.getAliases());
+        this.aliasesCompact = buildCompactAliases(this.aliases);
     }
 
     public String mapFinalLabel(List<String> labels) {
@@ -35,7 +37,11 @@ public class CatLabelMapper {
             if (!StringUtils.hasText(normalized)) {
                 continue;
             }
-            String resolved = aliases.getOrDefault(normalized, normalized);
+            String resolved = aliases.get(normalized);
+            if (!StringUtils.hasText(resolved)) {
+                String compact = compactKey(normalized);
+                resolved = aliasesCompact.getOrDefault(compact, normalized);
+            }
             if (StringUtils.hasText(resolved)) {
                 mapped.add(normalizeLabel(resolved));
             }
@@ -64,12 +70,48 @@ public class CatLabelMapper {
         return java.util.Collections.unmodifiableMap(normalized);
     }
 
+    private Map<String, String> buildCompactAliases(Map<String, String> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        java.util.Map<String, String> compact = new java.util.HashMap<>();
+        for (Map.Entry<String, String> entry : source.entrySet()) {
+            String key = compactKey(entry.getKey());
+            String value = normalizeLabel(entry.getValue());
+            if (StringUtils.hasText(key) && StringUtils.hasText(value)) {
+                compact.put(key, value);
+            }
+        }
+        return java.util.Collections.unmodifiableMap(compact);
+    }
+
     private String normalizeLabel(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
-        normalized = normalized.replaceAll("\\s+", " ").trim();
+        StringBuilder cleaned = new StringBuilder(normalized.length());
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            if (Character.isWhitespace(ch)) {
+                cleaned.append(' ');
+            } else if (!Character.isISOControl(ch)) {
+                cleaned.append(ch);
+            }
+        }
+        normalized = cleaned.toString().replaceAll("\\s+", " ").trim();
         return StringUtils.hasText(normalized) ? normalized : null;
+    }
+
+    private String compactKey(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = normalizeLabel(value);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        String compact = normalized.replaceAll("\\s+", "").toLowerCase();
+        return StringUtils.hasText(compact) ? compact : null;
     }
 }
