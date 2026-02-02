@@ -546,7 +546,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         log.info("Emitting read-only request: {} {}", eventName, payload);
         CompletableFuture<Object[]> response = new CompletableFuture<>();
         safeEmit(eventName, payload, response::complete);
-        Object[] ackArgs = awaitAck(eventName, response);
+        Object[] ackArgs = awaitAck(eventName, response, 15);
         return parseDeviceEventsFromAck(eventName, ackArgs);
     }
 
@@ -590,8 +590,12 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     private Object[] awaitAck(String event, CompletableFuture<Object[]> response) {
+        return awaitAck(event, response, 3);
+    }
+
+    private Object[] awaitAck(String event, CompletableFuture<Object[]> response, int timeoutSeconds) {
         try {
-            return response.get(3, TimeUnit.SECONDS);
+            return response.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception ex) {
             log.warn("Timed out waiting for ACK for '{}'", event);
             return new Object[0];
