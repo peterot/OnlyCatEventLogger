@@ -70,6 +70,11 @@ public class CatEventEnrichmentService {
             log.debug("Skipping non-cat-flap event without eventId: {}", inbound.eventName());
             return;
         }
+        BackfillHints backfillHints = extractBackfillHints(inbound);
+        if (backfillHints.isBackfill) {
+            ingest(inbound, backfillHints.rfidCode, backfillHints.catLabels);
+            return;
+        }
         String event = inbound.eventName();
         // Special-case: enrich userEventUpdate(create) with cat identity (RFID profile label).
         if ("userEventUpdate".equals(event)) {
@@ -106,6 +111,17 @@ public class CatEventEnrichmentService {
     }
 
     private void ingest(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
+        if (rfidCode == null || catLabels == null) {
+            BackfillHints backfillHints = extractBackfillHints(inbound);
+            if (backfillHints.isBackfill) {
+                if (rfidCode == null) {
+                    rfidCode = backfillHints.rfidCode;
+                }
+                if (catLabels == null) {
+                    catLabels = backfillHints.catLabels;
+                }
+            }
+        }
         OnlyCatEvent event = buildEvent(inbound, rfidCode, catLabels);
         String key = dedupeKey(inbound, event);
         String eventKey = eventKey(inbound.eventId(), inbound.deviceId());
@@ -305,14 +321,60 @@ public class CatEventEnrichmentService {
     }
 
     private boolean isBackfillEvent(OnlyCatInboundEvent inbound) {
+        return extractBackfillHints(inbound).isBackfill;
+    }
+
+    private BackfillHints extractBackfillHints(OnlyCatInboundEvent inbound) {
         if (inbound == null || inbound.args() == null) {
-            return false;
+            return BackfillHints.empty();
         }
         for (Object arg : inbound.args()) {
-            if ("__backfill__".equals(arg)) {
-                return true;
+            if (arg instanceof java.util.Map<?, ?> map) {
+                Object flag = map.get("__backfill__");
+                if (Boolean.TRUE.equals(flag)) {
+                    String rfidCode = extractString(map, "rfidCode");
+                    List<String> labels = extractLabels(map.get("catLabels"));
+                    return new BackfillHints(true, rfidCode, labels);
+                }
             }
         }
-        return false;
+        return BackfillHints.empty();
+    }
+
+    private String extractString(java.util.Map<?, ?> map, String key) {
+        if (map == null) {
+            return null;
+        }
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        return org.springframework.util.StringUtils.hasText(text) ? text : null;
+    }
+
+    private List<String> extractLabels(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(String::valueOf)
+                    .filter(org.springframework.util.StringUtils::hasText)
+                    .toList();
+        }
+        if (value instanceof String text && org.springframework.util.StringUtils.hasText(text)) {
+            if (text.contains("|")) {
+                return java.util.Arrays.stream(text.split("\\|"))
+                        .map(String::trim)
+                        .filter(org.springframework.util.StringUtils::hasText)
+                        .toList();
+            }
+            return List.of(text);
+        }
+        return List.of();
+    }
+
+    private record BackfillHints(boolean isBackfill, String rfidCode, List<String> catLabels) {
+        static BackfillHints empty() {
+            return new BackfillHints(false, null, List.of());
+        }
     }
 }

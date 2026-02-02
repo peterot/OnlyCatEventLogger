@@ -638,6 +638,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
 
             OnlyCatEventTriggerSource eventTriggerSource = OnlyCatEventTriggerSource.fromCode(eventTriggerSourceCode);
             OnlyCatEventClassification eventClassification = OnlyCatEventClassification.fromCode(eventClassificationCode);
+            Map<String, Object> backfillMeta = buildBackfillMeta(item);
             out.add(new OnlyCatInboundEvent(
                     "userEventUpdate",
                     eventId,
@@ -648,7 +649,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
                     timestamp,
                     globalId,
                     accessToken,
-                    new Object[]{"__backfill__", item}
+                    new Object[]{backfillMeta, item}
             ));
         }
         if (out.isEmpty()) {
@@ -713,6 +714,69 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return nested;
         }
         return list;
+    }
+
+    private Map<String, Object> buildBackfillMeta(Object item) {
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("__backfill__", true);
+        if (item instanceof JSONObject obj) {
+            addBackfillHints(meta, obj.toMap());
+        } else if (item instanceof Map<?, ?> map) {
+            addBackfillHints(meta, map);
+        }
+        return meta;
+    }
+
+    private void addBackfillHints(Map<String, Object> meta, Map<?, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return;
+        }
+        String rfidCode = firstString(map, "rfidCode", "rfid_code", "rfid");
+        if (StringUtils.hasText(rfidCode)) {
+            meta.put("rfidCode", rfidCode);
+        }
+        List<String> labels = extractLabels(map);
+        if (!labels.isEmpty()) {
+            meta.put("catLabels", labels);
+        }
+    }
+
+    private String firstString(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value == null) {
+                continue;
+            }
+            String text = String.valueOf(value);
+            if (StringUtils.hasText(text)) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private List<String> extractLabels(Map<?, ?> map) {
+        Object value = map.get("catLabels");
+        if (value == null) {
+            value = map.get("cat_labels");
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(String::valueOf)
+                    .filter(StringUtils::hasText)
+                    .toList();
+        }
+        String label = firstString(map, "catLabel", "cat_label", "label");
+        if (StringUtils.hasText(label)) {
+            if (label.contains("|")) {
+                return Arrays.stream(label.split("\\|"))
+                        .map(String::trim)
+                        .filter(StringUtils::hasText)
+                        .toList();
+            }
+            return List.of(label);
+        }
+        return List.of();
     }
 
     private List<?> normalizeRfidEventList(List<?> list) {
