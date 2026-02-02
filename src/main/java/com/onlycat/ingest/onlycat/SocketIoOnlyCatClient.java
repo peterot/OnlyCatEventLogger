@@ -753,9 +753,17 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         if (map == null || map.isEmpty()) {
             return;
         }
-        String rfidCode = firstString(map, "rfidCode", "rfid_code", "rfid");
-        if (StringUtils.hasText(rfidCode)) {
-            meta.put("rfidCode", rfidCode);
+        List<String> rfidCodes = extractRfidCodes(map);
+        if (!rfidCodes.isEmpty()) {
+            meta.put("rfidCodes", rfidCodes);
+            if (StringUtils.hasText(rfidCodes.get(0))) {
+                meta.put("rfidCode", rfidCodes.get(0));
+            }
+        } else {
+            String rfidCode = firstString(map, "rfidCode", "rfid_code", "rfid");
+            if (StringUtils.hasText(rfidCode)) {
+                meta.put("rfidCode", rfidCode);
+            }
         }
         List<String> labels = extractLabels(map);
         if (!labels.isEmpty()) {
@@ -797,6 +805,24 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
                         .toList();
             }
             return List.of(label);
+        }
+        return List.of();
+    }
+
+    private List<String> extractRfidCodes(Map<?, ?> map) {
+        Object value = map.get("rfidCodes");
+        if (value == null) {
+            value = map.get("rfid_codes");
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(String::valueOf)
+                    .filter(StringUtils::hasText)
+                    .toList();
+        }
+        String code = firstString(map, "rfidCode", "rfid_code", "rfid");
+        if (StringUtils.hasText(code)) {
+            return List.of(code);
         }
         return List.of();
     }

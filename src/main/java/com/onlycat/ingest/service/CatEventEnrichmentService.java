@@ -75,6 +75,12 @@ public class CatEventEnrichmentService {
             ingest(inbound, backfillHints.rfidCode, backfillHints.catLabels);
             return;
         }
+        List<String> payloadRfidCodes = extractRfidCodes(inbound);
+        if (!payloadRfidCodes.isEmpty()) {
+            List<String> labels = resolveLabels(payloadRfidCodes);
+            ingest(inbound, firstNonBlank(payloadRfidCodes), labels);
+            return;
+        }
         String event = inbound.eventName();
         // Special-case: enrich userEventUpdate(create) with cat identity (RFID profile label).
         if ("userEventUpdate".equals(event)) {
@@ -119,6 +125,9 @@ public class CatEventEnrichmentService {
                 }
                 if (catLabels == null) {
                     catLabels = backfillHints.catLabels;
+                }
+                if ((catLabels == null || catLabels.isEmpty()) && !backfillHints.rfidCodes.isEmpty()) {
+                    catLabels = resolveLabels(backfillHints.rfidCodes);
                 }
             }
         }
@@ -334,7 +343,11 @@ public class CatEventEnrichmentService {
                 if (Boolean.TRUE.equals(flag)) {
                     String rfidCode = extractString(map, "rfidCode");
                     List<String> labels = extractLabels(map.get("catLabels"));
-                    return new BackfillHints(true, rfidCode, labels);
+                    List<String> rfidCodes = extractLabels(map.get("rfidCodes"));
+                    if ((rfidCode == null || rfidCode.isBlank()) && !rfidCodes.isEmpty()) {
+                        rfidCode = rfidCodes.get(0);
+                    }
+                    return new BackfillHints(true, rfidCode, labels, rfidCodes);
                 }
             }
         }
@@ -372,9 +385,67 @@ public class CatEventEnrichmentService {
         return List.of();
     }
 
-    private record BackfillHints(boolean isBackfill, String rfidCode, List<String> catLabels) {
+    private List<String> extractRfidCodes(OnlyCatInboundEvent inbound) {
+        if (inbound == null || inbound.args() == null) {
+            return List.of();
+        }
+        for (Object arg : inbound.args()) {
+            List<String> codes = extractRfidCodesFromObject(arg);
+            if (!codes.isEmpty()) {
+                return codes;
+            }
+        }
+        return List.of();
+    }
+
+    private List<String> extractRfidCodesFromObject(Object value) {
+        if (value instanceof org.json.JSONObject obj) {
+            return extractRfidCodesFromMap(obj.toMap());
+        }
+        if (value instanceof java.util.Map<?, ?> map) {
+            return extractRfidCodesFromMap(map);
+        }
+        if (value instanceof org.json.JSONArray arr) {
+            for (int i = 0; i < arr.length(); i++) {
+                List<String> codes = extractRfidCodesFromObject(arr.opt(i));
+                if (!codes.isEmpty()) {
+                    return codes;
+                }
+            }
+        }
+        if (value instanceof java.util.List<?> list) {
+            for (Object item : list) {
+                List<String> codes = extractRfidCodesFromObject(item);
+                if (!codes.isEmpty()) {
+                    return codes;
+                }
+            }
+        }
+        return List.of();
+    }
+
+    private List<String> extractRfidCodesFromMap(java.util.Map<?, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return List.of();
+        }
+        Object value = map.get("rfidCodes");
+        if (value == null) {
+            value = map.get("rfid_codes");
+        }
+        List<String> codes = extractLabels(value);
+        if (!codes.isEmpty()) {
+            return codes;
+        }
+        String rfidCode = extractString(map, "rfidCode");
+        if (org.springframework.util.StringUtils.hasText(rfidCode)) {
+            return List.of(rfidCode);
+        }
+        return List.of();
+    }
+
+    private record BackfillHints(boolean isBackfill, String rfidCode, List<String> catLabels, List<String> rfidCodes) {
         static BackfillHints empty() {
-            return new BackfillHints(false, null, List.of());
+            return new BackfillHints(false, null, List.of(), List.of());
         }
     }
 }

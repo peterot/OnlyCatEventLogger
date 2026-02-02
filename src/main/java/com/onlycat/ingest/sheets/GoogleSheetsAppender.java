@@ -1,6 +1,7 @@
 package com.onlycat.ingest.sheets;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.sheets.v4.Sheets;
@@ -25,6 +26,8 @@ import java.util.List;
 public class GoogleSheetsAppender implements CatEventRepository {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsAppender.class);
     private static final String VALUE_INPUT_OPTION = "RAW"; // Keep payload unmodified
+    private static final long MIN_APPEND_INTERVAL_MS = 1100;
+    private static final int MAX_RETRIES = 5;
     private static final List<Object> HEADER = List.of(
             "ingested_at_utc",
             "event_time_utc",
@@ -42,6 +45,7 @@ public class GoogleSheetsAppender implements CatEventRepository {
     private final SheetsProperties properties;
     private final CatLabelMapper catLabelMapper;
     private volatile boolean headerEnsured = false;
+    private long lastAppendMs = 0;
 
     public GoogleSheetsAppender(SheetsProperties properties, CatLabelMapper catLabelMapper) {
         this.properties = properties;
@@ -54,14 +58,26 @@ public class GoogleSheetsAppender implements CatEventRepository {
         ensureHeader();
         String mappedLabel = catLabelMapper.mapFinalLabel(event.catLabels());
         ValueRange body = new ValueRange().setValues(List.of(event.toRow(mappedLabel)));
-        try {
-            sheets.spreadsheets().values()
-                    .append(properties.getSpreadsheetId(), properties.getAppendRange(), body)
-                    .setValueInputOption(VALUE_INPUT_OPTION)
-                    .setInsertDataOption("INSERT_ROWS")
-                    .execute();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to append row to Sheets", e);
+        int attempts = 0;
+        while (true) {
+            attempts++;
+            rateLimit();
+            try {
+                sheets.spreadsheets().values()
+                        .append(properties.getSpreadsheetId(), properties.getAppendRange(), body)
+                        .setValueInputOption(VALUE_INPUT_OPTION)
+                        .setInsertDataOption("INSERT_ROWS")
+                        .execute();
+                return;
+            } catch (GoogleJsonResponseException e) {
+                if (e.getStatusCode() == 429 && attempts <= MAX_RETRIES) {
+                    sleep(backoffDelayMs(attempts));
+                    continue;
+                }
+                throw new RuntimeException("Failed to append row to Sheets", e);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to append row to Sheets", e);
+            }
         }
     }
 
@@ -106,6 +122,32 @@ public class GoogleSheetsAppender implements CatEventRepository {
                     .build();
         } catch (IOException | GeneralSecurityException e) {
             throw new IllegalStateException("Unable to initialize Google Sheets client", e);
+        }
+    }
+
+    private void rateLimit() {
+        long now = System.currentTimeMillis();
+        long elapsed = now - lastAppendMs;
+        if (elapsed < MIN_APPEND_INTERVAL_MS) {
+            sleep(MIN_APPEND_INTERVAL_MS - elapsed);
+        }
+        lastAppendMs = System.currentTimeMillis();
+    }
+
+    private long backoffDelayMs(int attempt) {
+        long base = 1000L;
+        long delay = base * (1L << Math.min(4, attempt - 1));
+        return Math.min(delay, 15_000L);
+    }
+
+    private void sleep(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }
