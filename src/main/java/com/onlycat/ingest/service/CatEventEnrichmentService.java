@@ -77,8 +77,15 @@ public class CatEventEnrichmentService {
         }
         List<String> payloadRfidCodes = extractRfidCodes(inbound);
         if (!payloadRfidCodes.isEmpty()) {
-            List<String> labels = resolveLabels(payloadRfidCodes);
-            ingest(inbound, firstNonBlank(payloadRfidCodes), labels);
+            if (isEventThread()) {
+                enrichmentExecutor.execute(() -> {
+                    List<String> labels = resolveLabels(payloadRfidCodes);
+                    ingest(inbound, firstNonBlank(payloadRfidCodes), labels);
+                });
+            } else {
+                List<String> labels = resolveLabels(payloadRfidCodes);
+                ingest(inbound, firstNonBlank(payloadRfidCodes), labels);
+            }
             return;
         }
         String event = inbound.eventName();
@@ -327,6 +334,11 @@ public class CatEventEnrichmentService {
         }
         return hash((eventId == null ? "" : eventId) + ":" + deviceId + ":" +
                 (eventTimeUtc != null ? eventTimeUtc.toEpochMilli() : ""));
+    }
+
+    private boolean isEventThread() {
+        String name = Thread.currentThread().getName();
+        return name != null && name.contains("EventThread");
     }
 
     private boolean isBackfillEvent(OnlyCatInboundEvent inbound) {
