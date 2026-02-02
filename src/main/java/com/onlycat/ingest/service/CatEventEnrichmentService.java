@@ -109,7 +109,12 @@ public class CatEventEnrichmentService {
         OnlyCatEvent event = buildEvent(inbound, rfidCode, catLabels);
         String key = dedupeKey(inbound, event);
         String eventKey = eventKey(inbound.eventId(), inbound.deviceId());
+        boolean backfill = isBackfillEvent(inbound);
         if (!isUserEventCreate(inbound)) {
+            if (backfill) {
+                appendIfNotSeen(event, key);
+                return;
+            }
             if (eventKey == null || !pendingEventCache.hasPending(eventKey)) {
                 log.info("Skipping non-create event without pending match eventId={} deviceId={} eventName={}",
                         inbound.eventId(), inbound.deviceId(), inbound.eventName());
@@ -297,5 +302,17 @@ public class CatEventEnrichmentService {
         }
         return hash((eventId == null ? "" : eventId) + ":" + deviceId + ":" +
                 (eventTimeUtc != null ? eventTimeUtc.toEpochMilli() : ""));
+    }
+
+    private boolean isBackfillEvent(OnlyCatInboundEvent inbound) {
+        if (inbound == null || inbound.args() == null) {
+            return false;
+        }
+        for (Object arg : inbound.args()) {
+            if ("__backfill__".equals(arg)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

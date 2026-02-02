@@ -648,7 +648,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
                     timestamp,
                     globalId,
                     accessToken,
-                    new Object[]{item}
+                    new Object[]{"__backfill__", item}
             ));
         }
         if (out.isEmpty()) {
