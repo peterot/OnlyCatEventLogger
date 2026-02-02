@@ -585,7 +585,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         log.info("Emitting read-only request: getRfidProfile {}", payload);
         CompletableFuture<Object[]> response = new CompletableFuture<>();
         safeEmit("getRfidProfile", payload, response::complete);
-        Object[] ackArgs = awaitAck("getRfidProfile", response);
+        Object[] ackArgs = awaitAck("getRfidProfile", response, 10);
         return parseRfidProfileFromAck(ackArgs);
     }
 
