@@ -6,6 +6,10 @@ onlycat:
   subscribeEvents: []
   platform: "onlycat-java"
   device: "onlycat-event-logger"
+  backfill:
+    enabled: false
+    limit: 500
+    checkpointPath: "onlycat-checkpoint.json"
 
 sheets:
   credentialsPath: "/path/to/service-account.json"

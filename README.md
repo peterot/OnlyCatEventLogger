@@ -98,6 +98,63 @@ Notes:
 - Edit `/Applications/OnlyCatEventLogger/application.yml` when you need to update config.
 - Logs will appear in `/Library/Logs/OnlyCatEventLogger.out.log` and `/Library/Logs/OnlyCatEventLogger.err.log`.
 
+## Backfill on startup (optional)
+If you have a power cut or restart and want to backfill missed events, enable backfill. This uses a local checkpoint file and a read-only `getDeviceEvents` request to fetch the latest `limit` events, then only ingests events after the last checkpoint.
+
+1) Add a backfill section to `application.yml`:
+```yaml
+onlycat:
+  backfill:
+    enabled: true
+    limit: 500
+    checkpointPath: "onlycat-checkpoint.json"
+```
+
+2) Restart the service. On startup it will:
+   - Load the checkpoint file (if present).
+   - Request the latest events per device (up to `limit`).
+   - Ingest only events after the last checkpoint.
+   - Update the checkpoint as rows are appended.
+
+Notes:
+- If you run from `/Applications/OnlyCatEventLogger`, the checkpoint file will live next to the jar unless you set an absolute path.
+- Device IDs are auto-discovered via `getDevices` (requires `onlycat.requestDeviceListEvent` to be set).
+  - This works with the background launchd service because the plist sets `WorkingDirectory` to `/Applications/OnlyCatEventLogger`.
+
+### Bootstrapping the checkpoint from an existing Sheet
+If you've already been running the service and want backfill to start from the last row in your Google Sheet, you can create the checkpoint file manually. Use the most recent `event_time_utc` (and optionally `event_id`) for each `device_id`.
+
+Example checkpoint file (save as `onlycat-checkpoint.json` next to the jar, or set an absolute `checkpointPath`):
+```json
+{
+  "updatedAtUtc": "2026-02-02T00:00:00Z",
+  "devices": {
+    "OC-DEVICE-1": { "eventTimeUtc": "2026-02-01T18:22:10Z", "eventId": 12345 },
+    "OC-DEVICE-2": { "eventTimeUtc": "2026-02-01T20:03:41Z", "eventId": 67890 }
+  }
+}
+```
+
+Quick manual steps:
+1) In the Sheet, sort or filter by `device_id`, then find the latest `event_time_utc` (and `event_id`) for each device.
+2) Create/update the JSON above with those values.
+3) Restart the service with backfill enabled.
+
+## Updating the background service
+If you installed the launchd service, the easiest update is to re-run the installer script:
+```bash
+scripts/install_launchd.sh
+```
+
+Manual update (if you prefer not to run the script):
+```bash
+./gradlew bootJar
+sudo cp build/libs/*.jar /Applications/OnlyCatEventLogger/OnlyCatEventLogger.jar
+sudo cp src/main/resources/application.yml /Applications/OnlyCatEventLogger/application.yml
+sudo launchctl unload -w /Library/LaunchDaemons/com.onlycat.eventlogger.plist
+sudo launchctl load -w /Library/LaunchDaemons/com.onlycat.eventlogger.plist
+```
+
 ## Step 4 (optional): Add the Google Sheets Apps Script
 You only need **one** Apps Script. The all-in-one script is `scripts/apps_script.gs` (summary sheets + Status tab + Web App endpoint for ChatGPT/Shortcuts).
 

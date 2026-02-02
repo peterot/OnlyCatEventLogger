@@ -2,6 +2,7 @@ package com.onlycat.ingest.onlycat;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.onlycat.ingest.config.BackfillProperties;
 import com.onlycat.ingest.config.OnlyCatProperties;
 import com.onlycat.ingest.model.OnlyCatEventClassification;
 import com.onlycat.ingest.model.OnlyCatEventTriggerSource;
@@ -54,12 +55,14 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             "getDevices",
             "getDevice",
             "getEvents",
+            "getDeviceEvents",
             "getLastSeenRfidCodesByDevice",
             "getRfidProfile"
     );
     private static final long EVENTS_REFRESH_DELAY_MS = 1500;
 
     private final OnlyCatProperties properties;
+    private final BackfillProperties backfillProperties;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final ScheduledExecutorService refreshExecutor;
@@ -74,9 +77,11 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     private Socket socket;
 
     public SocketIoOnlyCatClient(OnlyCatProperties properties,
+                                 BackfillProperties backfillProperties,
                                  ApplicationEventPublisher eventPublisher,
                                  ObjectMapper objectMapper) {
         this.properties = properties;
+        this.backfillProperties = backfillProperties;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
         this.refreshExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -518,6 +523,54 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     @Override
+    public List<OnlyCatInboundEvent> requestDeviceEvents(String deviceId, java.time.Instant from, java.time.Instant to, int limit) {
+        String eventName = "getDeviceEvents";
+        if (!isAllowedEmit(eventName)) {
+            log.warn("Refusing to emit '{}' because it is not allowlisted", eventName);
+            return List.of();
+        }
+        if (!StringUtils.hasText(deviceId)) {
+            log.warn("Refusing to emit '{}' because deviceId is blank", eventName);
+            return List.of();
+        }
+        int effectiveLimit = Math.max(1, limit);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("deviceId", deviceId);
+        payload.put("limit", effectiveLimit);
+        if (from != null) {
+            payload.put("from", from.toString());
+        }
+        if (to != null) {
+            payload.put("to", to.toString());
+        }
+        log.info("Emitting read-only request: {} {}", eventName, payload);
+        CompletableFuture<Object[]> response = new CompletableFuture<>();
+        safeEmit(eventName, payload, response::complete);
+        Object[] ackArgs = awaitAck(eventName, response);
+        return parseDeviceEventsFromAck(eventName, ackArgs);
+    }
+
+    @Override
+    public List<String> requestDeviceIds() {
+        String event = properties.getRequestDeviceListEvent();
+        if (!StringUtils.hasText(event)) {
+            log.warn("Backfill auto-discovery skipped: requestDeviceListEvent is blank");
+            return List.of();
+        }
+        if (!isAllowedEmit(event)) {
+            log.warn("Refusing to emit '{}' because it is not allowlisted", event);
+            return List.of();
+        }
+        OnlyCatSubscribeRequest request = new OnlyCatSubscribeRequest(false);
+        Map<String, Object> payload = objectMapper.convertValue(request, new TypeReference<Map<String, Object>>() {});
+        log.info("Emitting read-only request: {} {}", event, payload);
+        CompletableFuture<Object[]> response = new CompletableFuture<>();
+        safeEmit(event, payload, response::complete);
+        Object[] ackArgs = awaitAck(event, response);
+        return extractDeviceIdsFromAck(ackArgs).stream().sorted().toList();
+    }
+
+    @Override
     public Optional<OnlyCatRfidProfile> requestRfidProfile(String rfidCode) {
         if (!isAllowedEmit("getRfidProfile")) {
             log.warn("Refusing to emit 'getRfidProfile' because it is not allowlisted");
@@ -560,6 +613,50 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         }
     }
 
+    private List<OnlyCatInboundEvent> parseDeviceEventsFromAck(String eventName, Object[] ackArgs) {
+        if (ackArgs == null || ackArgs.length == 0 || ackArgs[0] == null) {
+            return List.of();
+        }
+        List<?> list = toDeviceEventList(ackArgs[0]);
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        List<OnlyCatInboundEvent> out = new java.util.ArrayList<>();
+        for (Object item : list) {
+            OnlyCatUserEventUpdatePayload payload = toUserEventPayload(item);
+            if (payload == null) {
+                continue;
+            }
+            Integer eventId = payload.effectiveEventId();
+            String eventType = payload.type();
+            Integer eventTriggerSourceCode = payload.effectiveEventTriggerSource();
+            Integer eventClassificationCode = payload.effectiveEventClassification();
+            String deviceId = payload.effectiveDeviceId();
+            String timestamp = payload.effectiveTimestamp();
+            Long globalId = payload.effectiveGlobalId();
+            String accessToken = payload.effectiveAccessToken();
+
+            OnlyCatEventTriggerSource eventTriggerSource = OnlyCatEventTriggerSource.fromCode(eventTriggerSourceCode);
+            OnlyCatEventClassification eventClassification = OnlyCatEventClassification.fromCode(eventClassificationCode);
+            out.add(new OnlyCatInboundEvent(
+                    "userEventUpdate",
+                    eventId,
+                    eventType,
+                    eventTriggerSource,
+                    eventClassification,
+                    deviceId,
+                    timestamp,
+                    globalId,
+                    accessToken,
+                    new Object[]{item}
+            ));
+        }
+        if (out.isEmpty()) {
+            log.info("No parseable events returned for {} ack={}", eventName, Arrays.toString(ackArgs));
+        }
+        return out;
+    }
+
     private List<?> toRfidEventList(Object value) {
         if (value instanceof JSONArray arr) {
             return normalizeRfidEventList(arr.toList());
@@ -576,6 +673,48 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
         return null;
     }
 
+    private List<?> toDeviceEventList(Object value) {
+        if (value instanceof JSONArray arr) {
+            return normalizeEventList(arr.toList());
+        }
+        if (value instanceof JSONObject obj) {
+            return extractEventListFromMap(obj.toMap());
+        }
+        if (value instanceof Map<?, ?> map) {
+            return extractEventListFromMap(map);
+        }
+        if (value instanceof List<?> list) {
+            return normalizeEventList(list);
+        }
+        return null;
+    }
+
+    private List<?> extractEventListFromMap(Map<?, ?> map) {
+        if (map == null || map.isEmpty()) {
+            return List.of();
+        }
+        Object events = map.get("events");
+        if (events instanceof List<?> list) {
+            return normalizeEventList(list);
+        }
+        Object data = map.get("data");
+        if (data instanceof List<?> list) {
+            return normalizeEventList(list);
+        }
+        return List.of(map);
+    }
+
+    private List<?> normalizeEventList(List<?> list) {
+        if (list == null || list.isEmpty()) {
+            return list;
+        }
+        Object first = list.get(0);
+        if (first instanceof List<?> nested) {
+            return nested;
+        }
+        return list;
+    }
+
     private List<?> normalizeRfidEventList(List<?> list) {
         if (list == null || list.isEmpty()) {
             return list;
@@ -585,6 +724,25 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return nested;
         }
         return list;
+    }
+
+    private OnlyCatUserEventUpdatePayload toUserEventPayload(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OnlyCatUserEventUpdatePayload typed) {
+            return typed;
+        }
+        if (value instanceof JSONObject obj) {
+            return objectMapper.convertValue(obj.toMap(), OnlyCatUserEventUpdatePayload.class);
+        }
+        if (value instanceof Map<?, ?> map) {
+            return objectMapper.convertValue(map, OnlyCatUserEventUpdatePayload.class);
+        }
+        if (value instanceof List<?> list && list.size() == 1) {
+            return toUserEventPayload(list.get(0));
+        }
+        return null;
     }
 
     private Optional<OnlyCatRfidProfile> parseRfidProfileFromAck(Object[] ackArgs) {
@@ -645,7 +803,14 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
     }
 
     private boolean isAllowedEmit(String event) {
-        return StringUtils.hasText(event) && ALLOWED_EMITS.contains(event);
+        if (!StringUtils.hasText(event)) {
+            return false;
+        }
+        if (ALLOWED_EMITS.contains(event)) {
+            return true;
+        }
+        return backfillProperties.isEnabled()
+                && "getDeviceEvents".equals(event);
     }
 
     /**

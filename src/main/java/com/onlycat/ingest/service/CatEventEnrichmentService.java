@@ -31,6 +31,7 @@ public class CatEventEnrichmentService {
     private final DedupeCache dedupeCache;
     private final RfidLabelCache rfidLabelCache;
     private final LastSeenRfidEventsCache lastSeenRfidEventsCache;
+    private final BackfillCheckpointStore checkpointStore;
     private final ExecutorService enrichmentExecutor;
     private final ScheduledExecutorService pendingFallbackExecutor;
     private final PendingEventCache pendingEventCache;
@@ -38,11 +39,13 @@ public class CatEventEnrichmentService {
 
     public CatEventEnrichmentService(CatEventRepository eventRepository,
                                      RfidLabelCache rfidLabelCache,
-                                     LastSeenRfidEventsCache lastSeenRfidEventsCache) {
+                                     LastSeenRfidEventsCache lastSeenRfidEventsCache,
+                                     BackfillCheckpointStore checkpointStore) {
         this.eventRepository = eventRepository;
         this.dedupeCache = new DedupeCache(512);
         this.rfidLabelCache = rfidLabelCache;
         this.lastSeenRfidEventsCache = lastSeenRfidEventsCache;
+        this.checkpointStore = checkpointStore;
         this.enrichmentExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread thread = new Thread(r, "onlycat-enrichment");
             thread.setDaemon(true);
@@ -80,7 +83,7 @@ public class CatEventEnrichmentService {
                     if (eventKey != null && !isFinalClassification(inbound)) {
                         OnlyCatEvent pendingShell = buildEvent(inbound, null, null);
                         pendingEventCache.put(eventKey, pendingShell);
-                        schedulePendingFallback(eventKey);
+                        schedulePendingFallback(eventKey, 1);
                     }
                     enrichmentExecutor.execute(() -> {
                         try {
@@ -221,17 +224,57 @@ public class CatEventEnrichmentService {
         pendingFallbackExecutor.shutdownNow();
     }
 
-    private void schedulePendingFallback(String eventKey) {
+    private void schedulePendingFallback(String eventKey, int attempt) {
         pendingFallbackExecutor.schedule(() -> {
             Optional<OnlyCatEvent> pending = pendingEventCache.pop(eventKey);
             if (pending.isEmpty()) {
                 return;
             }
-            OnlyCatEvent event = pending.get();
+            OnlyCatEvent event = tryEnrichPending(pending.get());
+            if (!isEnrichedEvent(event) && attempt < 2) {
+                pendingEventCache.put(eventKey, event);
+                schedulePendingFallback(eventKey, attempt + 1);
+                return;
+            }
             String dedupeKey = dedupeKey(event.eventId(), event.deviceId(), event.eventTimeUtc());
             log.info("Appending pending event after timeout eventId={} deviceId={}", event.eventId(), event.deviceId());
             appendIfNotSeen(event, dedupeKey);
         }, pendingFallbackDelayMs, TimeUnit.MILLISECONDS);
+    }
+
+    private OnlyCatEvent tryEnrichPending(OnlyCatEvent event) {
+        if (event == null || isEnrichedEvent(event)) {
+            return event;
+        }
+        try {
+            List<String> rfidCodes = lastSeenRfidEventsCache.resolveRfidCodes(event.deviceId(), event.eventId());
+            List<String> labels = resolveLabels(rfidCodes);
+            String rfidCode = firstNonBlank(rfidCodes);
+            if (StringUtils.hasText(rfidCode) || (labels != null && !labels.isEmpty())) {
+                return new OnlyCatEvent(
+                        event.ingestedAtUtc(),
+                        event.eventTimeUtc(),
+                        event.eventName(),
+                        event.eventType(),
+                        event.eventId(),
+                        event.eventTriggerSource(),
+                        event.eventClassification(),
+                        event.globalId(),
+                        event.deviceId(),
+                        StringUtils.hasText(rfidCode) ? rfidCode : event.rfidCode(),
+                        (labels != null && !labels.isEmpty()) ? labels : event.catLabels()
+                );
+            }
+        } catch (Exception e) {
+            log.debug("Pending fallback enrichment failed; keeping pending event", e);
+        }
+        return event;
+    }
+
+    private boolean isEnrichedEvent(OnlyCatEvent event) {
+        return event != null
+                && (StringUtils.hasText(event.rfidCode())
+                || (event.catLabels() != null && !event.catLabels().isEmpty()));
     }
 
     private void appendIfNotSeen(OnlyCatEvent event, String key) {
@@ -240,6 +283,7 @@ public class CatEventEnrichmentService {
             return;
         }
         eventRepository.append(event);
+        checkpointStore.record(event);
         log.info("Appended event type={} cats={} device={} time={}", event.eventType(), catLabelsSummary(event.catLabels()), event.deviceId(), event.eventTimeUtc());
     }
 
