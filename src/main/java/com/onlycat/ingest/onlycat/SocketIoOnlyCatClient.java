@@ -622,6 +622,7 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return List.of();
         }
         List<OnlyCatInboundEvent> out = new java.util.ArrayList<>();
+        logBackfillSample(eventName, list);
         for (Object item : list) {
             OnlyCatUserEventUpdatePayload payload = toUserEventPayload(item);
             if (payload == null) {
@@ -714,6 +715,27 @@ public class SocketIoOnlyCatClient implements OnlyCatClient, OnlyCatEmitter, App
             return nested;
         }
         return list;
+    }
+
+    private void logBackfillSample(String eventName, List<?> list) {
+        if (list == null || list.isEmpty()) {
+            log.info("Backfill {} returned 0 items", eventName);
+            return;
+        }
+        Object first = list.get(0);
+        if (first instanceof JSONObject obj) {
+            Map<String, Object> map = obj.toMap();
+            log.info("Backfill {} returned {} items; first keys={}", eventName, list.size(), map.keySet());
+            log.debug("Backfill {} first item={}", eventName, map);
+            return;
+        }
+        if (first instanceof Map<?, ?> map) {
+            log.info("Backfill {} returned {} items; first keys={}", eventName, list.size(), map.keySet());
+            log.debug("Backfill {} first item={}", eventName, map);
+            return;
+        }
+        log.info("Backfill {} returned {} items; first type={}", eventName, list.size(), first == null ? "null" : first.getClass().getName());
+        log.debug("Backfill {} first item={}", eventName, first);
     }
 
     private Map<String, Object> buildBackfillMeta(Object item) {
