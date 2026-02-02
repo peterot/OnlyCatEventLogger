@@ -124,7 +124,7 @@ public class CatEventEnrichmentService {
     }
 
     private void ingest(OnlyCatInboundEvent inbound, String rfidCode, List<String> catLabels) {
-        if (rfidCode == null || catLabels == null) {
+        if (rfidCode == null || catLabels == null || catLabels.isEmpty()) {
             BackfillHints backfillHints = extractBackfillHints(inbound);
             if (backfillHints.isBackfill) {
                 if (rfidCode == null) {
