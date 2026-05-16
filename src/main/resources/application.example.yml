@@ -11,6 +11,15 @@ onlycat:
     limit: 500
     checkpointPath: "onlycat-checkpoint.json"
 
+# Output destination: 'sheets' (default) sends events to Google Sheets,
+# 'file' writes a local CSV instead (no Google credentials required).
+output:
+  mode: sheets
+  file:
+    path: onlycat-events.csv         # full record, all columns
+    llmPath: onlycat-events-llm.csv  # optimised for LLM consumption
+    timezone: Europe/London          # used for event_time_local column in LLM file
+
 sheets:
   credentialsPath: "/path/to/service-account.json"
   spreadsheetId: "your-sheet-id"

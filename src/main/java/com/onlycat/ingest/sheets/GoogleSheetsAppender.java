@@ -15,6 +15,7 @@ import com.onlycat.ingest.service.CatLabelMapper;
 import com.onlycat.ingest.service.CatEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.FileInputStream;
@@ -23,6 +24,7 @@ import java.security.GeneralSecurityException;
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(name = "output.mode", havingValue = "sheets", matchIfMissing = true)
 public class GoogleSheetsAppender implements CatEventRepository {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsAppender.class);
     private static final String VALUE_INPUT_OPTION = "RAW"; // Keep payload unmodified

@@ -1,10 +1,16 @@
 # Local config (copy from application.example.yml)
 src/main/resources/application.yml
+
+# Local event data
+onlycat-events.csv
+onlycat-events-llm.csv
 src/main/resources/application-local.yml
 onlycat-checkpoint.json
 
 # Build outputs
 build/
+bin/
+.venv/
 *.class
 .gradle/
 .idea/

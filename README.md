@@ -140,6 +140,51 @@ Quick manual steps:
 2) Create/update the JSON above with those values.
 3) Restart the service with backfill enabled.
 
+## Local file output (alternative to Sheets)
+
+Instead of writing to Google Sheets you can write events to local CSV files — useful if you want to query the data with a local MCP server or other tools without needing Google credentials at runtime.
+
+Set `output.mode: file` in `application.yml`:
+
+```yaml
+output:
+  mode: file          # 'sheets' is the default
+  file:
+    path: onlycat-events.csv         # full record, all columns
+    llmPath: onlycat-events-llm.csv  # optimised for LLM consumption
+    timezone: Europe/London          # used for local timestamp column
+```
+
+Paths can be absolute or relative to the working directory. When running as a launchd daemon the working directory is `/Applications/OnlyCatEventLogger`, so relative paths resolve there.
+
+Two files are written on every event:
+
+| File | Columns | Purpose |
+|---|---|---|
+| `onlycat-events.csv` | All 11 columns (full record) | Archival, debugging |
+| `onlycat-events-llm.csv` | `event_time_utc`, `event_time_local`, `direction`, `event_classification`, `cat_label` | LLM / MCP consumption |
+
+The LLM file adds two derived columns not present in the raw data:
+- `event_time_local` — event time converted to your local timezone (DST-aware)
+- `direction` — `in` / `out` / `remote` / `manual` / `unknown`, derived from `event_trigger_source` (clearer than "Entry Allowed" / "Exit Allowed")
+
+### Bootstrapping from existing Sheets data
+
+If you've already been logging to Google Sheets you can back-fill the local CSVs in one go. The script reads the same `application.yml` credentials and sheet config so no extra setup is needed.
+
+Install the script's Python dependencies (once):
+```bash
+python3 -m venv .venv
+.venv/bin/pip install pyyaml google-auth google-api-python-client
+```
+
+Then run:
+```bash
+scripts/export_from_sheets.sh
+```
+
+The script reads every row from your configured sheet and writes both CSV files with the same column structure and LLM transformations that the live app produces.
+
 ## Updating the background service
 If you installed the launchd service, the easiest update is to re-run the installer script:
 ```bash
@@ -272,7 +317,9 @@ On iPhone/iPad:
 - `src/main/java/com/onlycat/ingest` – app entrypoint and configuration
 - `onlycat/onlycat` – Socket.IO client that streams events
 - `onlycat/service` – event normalization + dedupe
-- `onlycat/sheets` – Google Sheets appender
+- `onlycat/sheets` – Google Sheets appender (active when `output.mode=sheets`)
+- `onlycat/file` – local CSV appender (active when `output.mode=file`)
+- `scripts/export_from_sheets.sh` – one-shot bootstrap of local CSVs from existing Sheets data
 - `application.yml` – configuration placeholders
 
 ## Behaviour notes
