@@ -10,6 +10,7 @@
       <string>/usr/bin/java</string>
       <string>-jar</string>
       <string>/Applications/OnlyCatEventLogger/OnlyCatEventLogger.jar</string>
+      <string>--output.mode=file</string>
     </array>
 
     <key>WorkingDirectory</key>
